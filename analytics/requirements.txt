@@ -1,0 +1,17 @@
+# Analytics Dashboard Requirements
+# =================================
+
+# Core dependencies
+streamlit>=1.28.0
+pandas>=2.1.0
+numpy>=1.24.0
+
+# Data visualization
+plotly>=5.17.0
+
+# Database
+duckdb>=0.9.0
+
+# Optional: For enhanced performance
+# streamlit-autorefresh>=1.0.0
+# streamlit-aggrid>=0.3.0

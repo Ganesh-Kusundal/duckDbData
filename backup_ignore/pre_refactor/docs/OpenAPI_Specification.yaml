@@ -1,0 +1,576 @@
+openapi: 3.0.0
+info:
+  title: DuckDB Financial Data API
+  description: |
+    ## Advanced Financial Market Data Infrastructure
+
+    A high-performance API for querying and analyzing financial market data with advanced resampling capabilities.
+    Built on DuckDB for optimal analytical performance.
+
+    ### Key Features
+    - **Data Resampling**: Convert minute data to higher timeframes (5min, 15min, 1hour, daily, etc.)
+    - **Technical Indicators**: Calculate SMA, EMA, RSI, Bollinger Bands, and more
+    - **Complex Analytics**: Volume profile, correlation analysis, market summaries
+    - **Custom Queries**: Execute complex SQL queries with full DuckDB capabilities
+    - **High Performance**: Optimized for large-scale financial data processing
+
+    ### Supported Timeframes
+    - `1T` - 1 Minute (original data)
+    - `5T` - 5 Minutes
+    - `15T` - 15 Minutes
+    - `30T` - 30 Minutes
+    - `1H` - 1 Hour
+    - `4H` - 4 Hours
+    - `1D` - 1 Day
+    - `1W` - 1 Week
+    - `1M` - 1 Month
+  version: 1.0.0
+  contact:
+    name: DuckDB Financial Infrastructure
+    url: http://localhost:8000
+    email: support@example.com
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+tags:
+  - name: Health
+    description: API health and status monitoring
+  - name: Data Access
+    description: Core market data retrieval and querying
+  - name: Resampling
+    description: Data resampling to higher timeframes
+  - name: Analytics
+    description: Technical indicators and analytical operations
+  - name: Utilities
+    description: Utility endpoints for symbols, timeframes, and metadata
+  - name: Management
+    description: Data loading and management operations
+
+paths:
+  /:
+    get:
+      tags:
+        - Health
+      summary: API Information
+      description: Get basic API information and available endpoints
+      responses:
+        '200':
+          description: API information retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "DuckDB Financial Data API"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  description:
+                    type: string
+                    example: "High-performance financial market data infrastructure"
+                  endpoints:
+                    type: object
+                    additionalProperties:
+                      type: string
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health Check
+      description: Check API and database health status
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  database:
+                    type: string
+                    example: "connected"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2024-01-01T12:00:00Z"
+                  version:
+                    type: string
+                    example: "1.0.0"
+        '500':
+          description: API is unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "unhealthy"
+                  error:
+                    type: string
+                    example: "Database connection failed"
+
+  /market-data:
+    post:
+      tags:
+        - Data Access
+      summary: Get Raw Market Data
+      description: Retrieve raw minute-level OHLCV market data with flexible filtering options
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Market data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketDataResponse'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Internal server error
+
+  /resample:
+    post:
+      tags:
+        - Resampling
+      summary: Resample Data to Higher Timeframes
+      description: Convert minute-level data to higher timeframes using OHLCV aggregation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResampleRequest'
+      responses:
+        '200':
+          description: Data resampled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResampledDataResponse'
+        '400':
+          description: Invalid timeframe or parameters
+        '500':
+          description: Internal server error
+
+  /multi-timeframe:
+    post:
+      tags:
+        - Resampling
+      summary: Get Multiple Timeframes
+      description: Get data for multiple timeframes simultaneously
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MultiTimeframeRequest'
+      responses:
+        '200':
+          description: Multi-timeframe data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/ResampledDataResponse'
+
+  /technical-indicators:
+    post:
+      tags:
+        - Analytics
+      summary: Calculate Technical Indicators
+      description: Calculate technical indicators for market data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TechnicalIndicatorsRequest'
+      responses:
+        '200':
+          description: Technical indicators calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechnicalIndicatorsResponse'
+
+  /available-symbols:
+    get:
+      tags:
+        - Utilities
+      summary: Get Available Symbols
+      description: Retrieve list of all available symbols from the file system
+      responses:
+        '200':
+          description: Available symbols retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbols:
+                    type: array
+                    items:
+                      type: string
+                    example: ["RELIANCE", "TCS", "INFY", "HDFC", "ICICIBANK"]
+                  count:
+                    type: integer
+                    example: 5
+
+  /timeframes:
+    get:
+      tags:
+        - Utilities
+      summary: Get Supported Timeframes
+      description: Get list of all supported timeframes and technical indicators
+      responses:
+        '200':
+          description: Supported timeframes and indicators
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeframesResponse'
+
+  /custom-query:
+    post:
+      tags:
+        - Analytics
+      summary: Execute Custom Query
+      description: Execute custom analytical SQL queries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomQueryRequest'
+      responses:
+        '200':
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          description: Invalid query or forbidden operation
+
+components:
+  schemas:
+    QueryRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Stock symbol to filter by
+          example: "RELIANCE"
+        start_date:
+          type: string
+          format: date
+          description: Start date for filtering (YYYY-MM-DD format)
+          example: "2024-01-01"
+        end_date:
+          type: string
+          format: date
+          description: End date for filtering (YYYY-MM-DD format)
+          example: "2024-01-31"
+        start_time:
+          type: string
+          pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+          description: Start time filter in HH:MM format (24-hour)
+          example: "09:15"
+        end_time:
+          type: string
+          pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+          description: End time filter in HH:MM format (24-hour)
+          example: "15:30"
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          description: Maximum number of records to return
+          example: 1000
+
+    ResampleRequest:
+      type: object
+      required:
+        - symbol
+        - timeframe
+      properties:
+        symbol:
+          type: string
+          description: Stock symbol to resample (required)
+          example: "RELIANCE"
+        timeframe:
+          type: string
+          pattern: "^(1T|5T|15T|30T|1H|4H|1D|1W|1M)$"
+          description: Target timeframe for resampling
+          example: "1H"
+        start_date:
+          type: string
+          format: date
+          description: Start date for resampling
+          example: "2024-01-01"
+        end_date:
+          type: string
+          format: date
+          description: End date for resampling
+          example: "2024-01-31"
+        start_time:
+          type: string
+          pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+          description: Start time filter in HH:MM format
+          example: "09:15"
+        end_time:
+          type: string
+          pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+          description: End time filter in HH:MM format
+          example: "15:30"
+
+    MultiTimeframeRequest:
+      type: object
+      required:
+        - symbol
+        - timeframes
+      properties:
+        symbol:
+          type: string
+          description: Stock symbol to analyze
+          example: "RELIANCE"
+        timeframes:
+          type: array
+          items:
+            type: string
+            pattern: "^(1T|5T|15T|30T|1H|4H|1D|1W|1M)$"
+          description: List of timeframes to retrieve
+          example: ["15T", "1H", "1D"]
+        start_date:
+          type: string
+          format: date
+          example: "2024-01-01"
+        end_date:
+          type: string
+          format: date
+          example: "2024-01-31"
+
+    TechnicalIndicatorsRequest:
+      type: object
+      required:
+        - symbol
+      properties:
+        symbol:
+          type: string
+          description: Stock symbol to analyze
+          example: "RELIANCE"
+        timeframe:
+          type: string
+          default: "1D"
+          description: Timeframe for indicator calculation
+          example: "1D"
+        indicators:
+          type: array
+          items:
+            type: string
+            enum: ["sma_20", "sma_50", "ema_12", "ema_26", "rsi_14", "bollinger_bands"]
+          description: List of technical indicators to calculate
+          example: ["sma_20", "rsi_14", "bollinger_bands"]
+        start_date:
+          type: string
+          format: date
+          example: "2024-01-01"
+        end_date:
+          type: string
+          format: date
+          example: "2024-01-31"
+
+    CustomQueryRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: SQL query string (SELECT statements only)
+          example: "SELECT symbol, AVG(close) as avg_price FROM market_data WHERE symbol = ? GROUP BY symbol"
+        params:
+          type: array
+          items: {}
+          description: Query parameters for prepared statements
+          example: ["RELIANCE"]
+
+    MarketDataResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketDataRecord'
+        count:
+          type: integer
+          example: 1
+        columns:
+          type: array
+          items:
+            type: string
+          example: ["symbol", "timestamp", "open", "high", "low", "close", "volume", "date_partition"]
+
+    ResampledDataResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResampledDataRecord'
+        count:
+          type: integer
+          example: 1
+        columns:
+          type: array
+          items:
+            type: string
+          example: ["symbol", "timestamp", "open", "high", "low", "close", "volume", "tick_count", "timeframe"]
+
+    TechnicalIndicatorsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TechnicalIndicatorsRecord'
+        count:
+          type: integer
+        columns:
+          type: array
+          items:
+            type: string
+
+    QueryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        count:
+          type: integer
+        columns:
+          type: array
+          items:
+            type: string
+
+    TimeframesResponse:
+      type: object
+      properties:
+        timeframes:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            "1T": "1 Minute"
+            "5T": "5 Minutes"
+            "1H": "1 Hour"
+            "1D": "1 Day"
+        technical_indicators:
+          type: array
+          items:
+            type: string
+          example: ["sma_20", "sma_50", "ema_12", "rsi_14", "bollinger_bands"]
+        compression_ratios:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            "5T": "5x compression"
+            "1H": "60x compression"
+            "1D": "375x compression"
+
+    MarketDataRecord:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: "RELIANCE"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01 09:15:00"
+        open:
+          type: number
+          format: float
+          example: 1000.0
+        high:
+          type: number
+          format: float
+          example: 1005.0
+        low:
+          type: number
+          format: float
+          example: 998.0
+        close:
+          type: number
+          format: float
+          example: 1002.0
+        volume:
+          type: integer
+          example: 50000
+        date_partition:
+          type: string
+          format: date
+          example: "2024-01-01"
+
+    ResampledDataRecord:
+      allOf:
+        - $ref: '#/components/schemas/MarketDataRecord'
+        - type: object
+          properties:
+            tick_count:
+              type: integer
+              description: Number of minute bars aggregated
+              example: 60
+            timeframe:
+              type: string
+              description: Timeframe used for resampling
+              example: "1H"
+
+    TechnicalIndicatorsRecord:
+      allOf:
+        - $ref: '#/components/schemas/MarketDataRecord'
+        - type: object
+          properties:
+            sma_20:
+              type: number
+              format: float
+              description: Simple Moving Average (20 periods)
+            rsi_14:
+              type: number
+              format: float
+              description: Relative Strength Index (14 periods)
+            bb_upper:
+              type: number
+              format: float
+              description: Bollinger Band Upper
+            bb_middle:
+              type: number
+              format: float
+              description: Bollinger Band Middle
+            bb_lower:
+              type: number
+              format: float
+              description: Bollinger Band Lower

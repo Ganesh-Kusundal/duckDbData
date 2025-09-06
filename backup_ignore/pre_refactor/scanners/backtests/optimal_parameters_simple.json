@@ -1,0 +1,16 @@
+{
+  "optimal_parameters": {
+    "min_score_threshold": 0.4,
+    "obv_slope_threshold": 0.2,
+    "vwap_deviation_band": 0.02,
+    "risk_per_trade": 0.01,
+    "leverage": 2,
+    "max_positions": 2,
+    "atr_threshold": 0.01,
+    "volume_ratio_threshold": 1.5
+  },
+  "final_results": {
+    "error": "No trading days found"
+  },
+  "optimization_date": "2025-09-04 23:49:08.328274"
+}

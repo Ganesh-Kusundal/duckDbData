@@ -1,0 +1,53 @@
+[
+  {
+    "name": "volume_spike_breakout",
+    "description": "High volume breakout with price momentum",
+    "conditions": {
+      "min_volume_multiplier": 1.5,
+      "min_price_move": 0.02,
+      "min_confidence": 0.6,
+      "time_window": {
+        "start": "09:35",
+        "end": "10:30"
+      }
+    },
+    "actions": {
+      "signal_type": "BUY"
+    },
+    "enabled": true
+  },
+  {
+    "name": "time_window_momentum",
+    "description": "Opening range breakout with time-based momentum",
+    "conditions": {
+      "min_volume_multiplier": 1.2,
+      "min_price_move": 0.015,
+      "min_confidence": 0.5,
+      "time_window": {
+        "start": "09:35",
+        "end": "09:50"
+      }
+    },
+    "actions": {
+      "signal_type": "BUY"
+    },
+    "enabled": true
+  },
+  {
+    "name": "high_confidence_breakout",
+    "description": "High confidence breakout signal",
+    "conditions": {
+      "min_volume_multiplier": 2.0,
+      "min_price_move": 0.03,
+      "min_confidence": 0.8,
+      "time_window": {
+        "start": "09:30",
+        "end": "11:00"
+      }
+    },
+    "actions": {
+      "signal_type": "BUY"
+    },
+    "enabled": true
+  }
+]
