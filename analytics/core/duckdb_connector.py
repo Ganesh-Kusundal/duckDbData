@@ -10,6 +10,9 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import logging
+from src.infrastructure.config.config_manager import ConfigManager
+from src.domain.exceptions import DatabaseConnectionError
+from src.infrastructure.utils.retry import retry_db_operation
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +20,49 @@ logger = logging.getLogger(__name__)
 class DuckDBAnalytics:
     """DuckDB connector for analytics dashboard."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, config_manager: Optional[ConfigManager] = None, db_path: Optional[str] = None):
         """
-        Initialize DuckDB analytics connector.
+        Initialize DuckDB analytics connector with centralized configuration.
 
         Args:
-            db_path: Path to existing DuckDB database file
+            config_manager: ConfigManager instance for centralized configuration (optional for backward compatibility)
+            db_path: Path to existing DuckDB database file (fallback)
         """
-        # Point to the database in the parent directory
-        self.db_path = db_path or "../data/financial_data.duckdb"
+        self.config_manager = config_manager
         self.connection = None
-        self.data_paths = {
-            'parquet_base': '../data/',
-            'indicators': '../data/technical_indicators/',
-            'processed': '../data/processed/'
-        }
+        
+        # Backward compatible database path loading
+        if self.config_manager:
+            try:
+                database_config = self.config_manager.get_config('database')
+                print(f"DEBUG DB PATH: config={database_config}")
+                self.db_path = str(database_config.get('path', 'financial_data.duckdb'))
+            except Exception:
+                self.db_path = db_path or "financial_data.duckdb"
+        else:
+            self.db_path = db_path or "../data/financial_data.duckdb"
+        
+        # Load data paths from config or use defaults
+        if self.config_manager:
+            try:
+                analytics_config = self.config_manager.get_config('analytics')
+                self.data_paths = {
+                    'parquet_base': analytics_config.get('data_paths', {}).get('parquet_base', './data/'),
+                    'indicators': analytics_config.get('data_paths', {}).get('indicators', './data/technical_indicators/'),
+                    'processed': analytics_config.get('data_paths', {}).get('processed', './data/processed/')
+                }
+            except Exception:
+                self.data_paths = {
+                    'parquet_base': './data/',
+                    'indicators': './data/technical_indicators/',
+                    'processed': './data/processed/'
+                }
+        else:
+            self.data_paths = {
+                'parquet_base': './data/',
+                'indicators': './data/technical_indicators/',
+                'processed': './data/processed/'
+            }
 
     def connect(self) -> duckdb.DuckDBPyConnection:
         """Connect to DuckDB database."""
@@ -45,8 +76,14 @@ class DuckDBAnalytics:
 
             return self.connection
         except Exception as e:
-            logger.error(f"Failed to connect to DuckDB: {e}")
-            raise
+            error_msg = f"Failed to connect to DuckDB database: {str(e)}"
+            context = {
+                'database_path': self.db_path,
+                'config_manager': bool(self.config_manager)
+            }
+            exc = DatabaseConnectionError(error_msg, 'connect', context=context)
+            logger.error("DuckDB connection failed", extra=exc.to_dict())
+            raise exc
 
     def get_market_data_schema(self) -> pd.DataFrame:
         """Get schema information for market data tables."""
@@ -82,7 +119,7 @@ class DuckDBAnalytics:
         """Execute analytics query with parameters."""
         if not self.connection:
             self.connect()
-
+        
         try:
             # Replace placeholders with actual values
             formatted_query = query
@@ -91,22 +128,30 @@ class DuckDBAnalytics:
                     formatted_query = formatted_query.replace(f"{{{key}}}", f"'{value}'")
                 else:
                     formatted_query = formatted_query.replace(f"{{{key}}}", str(value))
-
+            
             logger.debug(f"Executing query: {formatted_query[:100]}...")
             result = self.connection.execute(formatted_query).fetchdf()
             logger.info(f"Query returned {len(result)} rows")
             return result
-
+            
         except Exception as e:
-            logger.error(f"Query execution failed: {e}")
+            error_msg = f"Analytics query execution failed: {str(e)}"
+            context = {
+                'query': query[:200] + '...' if len(query) > 200 else query,
+                'params_count': len(params),
+                'database_path': self.db_path,
+                'formatted_query_length': len(formatted_query)
+            }
+            exc = DatabaseConnectionError(error_msg, 'execute_analytics_query', context=context)
+            logger.error("Analytics query execution failed", extra=exc.to_dict())
             logger.error(f"Query: {query}")
-            raise
+            raise exc
 
     def get_available_symbols(self) -> List[str]:
         """Get list of available stock symbols."""
         query = """
         SELECT DISTINCT symbol
-        FROM parquet_scan('../data/**/*.parquet')
+        FROM parquet_scan('./data/**/*.parquet')
         ORDER BY symbol
         """
 
@@ -123,7 +168,7 @@ class DuckDBAnalytics:
         SELECT
             MIN(date) as start_date,
             MAX(date) as end_date
-        FROM parquet_scan('../data/**/*.parquet')
+        FROM parquet_scan('./data/**/*.parquet')
         """
 
         try:
@@ -136,9 +181,28 @@ class DuckDBAnalytics:
             return "2015-01-01", "2025-12-31"
 
     def get_volume_spike_patterns(self,
-                                min_volume_multiplier: float = 1.5,
-                                time_window_minutes: int = 10,
-                                min_price_move: float = 0.03) -> pd.DataFrame:
+                                min_volume_multiplier: Optional[float] = None,
+                                time_window_minutes: Optional[int] = None,
+                                min_price_move: Optional[float] = None) -> pd.DataFrame:
+        """Find volume spike patterns that lead to breakouts using ConfigManager parameters."""
+        # Load parameters from ConfigManager or use defaults
+        if self.config_manager:
+            try:
+                analytics_config = self.config_manager.get_config('analytics')
+                query_config = analytics_config.get('queries', {}).get('volume_spike', {})
+                min_volume_multiplier = min_volume_multiplier or query_config.get('min_volume_multiplier', 1.5)
+                time_window_minutes = time_window_minutes or query_config.get('time_window_minutes', 10)
+                min_price_move = min_price_move or query_config.get('min_price_move', 0.03)
+            except Exception:
+                # Fallback to provided parameters or defaults
+                min_volume_multiplier = min_volume_multiplier or 1.5
+                time_window_minutes = time_window_minutes or 10
+                min_price_move = min_price_move or 0.03
+        else:
+            min_volume_multiplier = min_volume_multiplier or 1.5
+            time_window_minutes = time_window_minutes or 10
+            min_price_move = min_price_move or 0.03
+
         """Find volume spike patterns that lead to breakouts."""
 
         query = f"""
@@ -163,7 +227,7 @@ class DuckDBAnalytics:
                     ORDER BY ts
                     ROWS BETWEEN CURRENT ROW AND 59 FOLLOWING
                 ) as max_high_next_60min
-            FROM parquet_scan('../data/**/*.parquet')
+            FROM parquet_scan('./data/**/*.parquet')
             WHERE volume > 0 AND close > 0
         )
         SELECT
@@ -186,8 +250,23 @@ class DuckDBAnalytics:
         return self.execute_analytics_query(query)
 
     def get_time_window_analysis(self,
-                               start_time: str = "09:35",
-                               end_time: str = "09:50") -> pd.DataFrame:
+                               start_time: Optional[str] = None,
+                               end_time: Optional[str] = None) -> pd.DataFrame:
+        """Analyze breakout patterns within specific time windows using ConfigManager."""
+        # Load time window parameters from ConfigManager or use defaults
+        if self.config_manager:
+            try:
+                analytics_config = self.config_manager.get_config('analytics')
+                dashboard_config = analytics_config.get('dashboard', {})
+                start_time = start_time or dashboard_config.get('analysis_start_time', "09:35")
+                end_time = end_time or dashboard_config.get('analysis_end_time', "09:50")
+            except Exception:
+                start_time = start_time or "09:35"
+                end_time = end_time or "09:50"
+        else:
+            start_time = start_time or "09:35"
+            end_time = end_time or "09:50"
+
         """Analyze breakout patterns within specific time windows."""
 
         query = f"""
@@ -215,7 +294,7 @@ class DuckDBAnalytics:
                     ORDER BY ts
                     ROWS BETWEEN CURRENT ROW AND 59 FOLLOWING
                 ) as post_window_max_high
-            FROM parquet_scan('../data/**/*.parquet')
+            FROM parquet_scan('./data/**/*.parquet')
             WHERE time(ts) BETWEEN '{start_time}' AND '{end_time}'
         )
         SELECT

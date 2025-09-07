@@ -1,6 +1,7 @@
 """Logging infrastructure initialization."""
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -8,11 +9,17 @@ import structlog
 
 # Optional import for JSON logging
 try:
-    from pythonjsonlogger import jsonlogger
+    from pythonjsonlogger.json import JsonFormatter
     HAS_JSON_LOGGER = True
 except ImportError:
-    HAS_JSON_LOGGER = False
-    jsonlogger = None
+    try:
+        # Fallback to old import for backward compatibility
+        from pythonjsonlogger import jsonlogger
+        JsonFormatter = jsonlogger.JsonFormatter
+        HAS_JSON_LOGGER = True
+    except ImportError:
+        HAS_JSON_LOGGER = False
+        JsonFormatter = None
 
 from ..config.settings import get_settings
 
@@ -20,6 +27,7 @@ from ..config.settings import get_settings
 def setup_logging():
     """Set up structured logging for the application."""
     settings = get_settings()
+    logger = logging.getLogger(__name__)
 
     # Configure standard library logging
     logging.basicConfig(
@@ -56,8 +64,13 @@ def setup_logging():
 
     # File logging
     if settings.logging.file.enabled:
-        log_path = Path(settings.logging.file.path)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        configured_path = settings.logging.file.path
+        log_path = Path(configured_path)
+        if str(log_path) == os.environ.get('PATH', '') or ':' in str(log_path):
+            logger.warning(f"Invalid log path detected: {configured_path}. Using fallback path.")
+            log_path = Path.cwd() / "logs" / "app.log"
+        if not log_path.parent.exists():
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
         file_processors = shared_processors + [
             structlog.processors.JSONRenderer(),
@@ -65,14 +78,14 @@ def setup_logging():
 
         # Set up file handler
         file_handler = logging.FileHandler(
-            settings.logging.file.path,
+            str(log_path),
             encoding='utf-8'
         )
         file_handler.setLevel(getattr(logging, settings.logging.level.upper()))
 
         # JSON formatter for file
-        if HAS_JSON_LOGGER and jsonlogger:
-            formatter = jsonlogger.JsonFormatter(
+        if HAS_JSON_LOGGER and JsonFormatter:
+            formatter = JsonFormatter(
                 fmt='%(asctime)s %(name)s %(levelname)s %(message)s'
             )
             file_handler.setFormatter(formatter)

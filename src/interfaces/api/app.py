@@ -28,6 +28,7 @@ from .routes import (
     system_router,
     metrics_router
 )
+from .routes.scanner_api import router as enhanced_scanner_router
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -144,6 +145,13 @@ app.include_router(
     metrics_router,
     prefix="/metrics",
     tags=["Metrics"]
+)
+
+# Enhanced Scanner API
+app.include_router(
+    enhanced_scanner_router,
+    prefix="/api/v1/scanner",
+    tags=["Enhanced Scanner"]
 )
 
 

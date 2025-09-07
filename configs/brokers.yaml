@@ -1,0 +1,18 @@
+# Brokers module configuration
+default: "dhan"
+
+brokers:
+  dhan:
+    api_key: "dummy_dhan_key"
+    api_secret: "dummy_dhan_secret"
+    access_token: "dummy_dhan_token"
+  tradehull:
+    api_key: "dummy_tradehull_key"
+    api_secret: "dummy_tradehull_secret"
+    access_token: "dummy_tradehull_token"
+
+endpoints:
+  dhan: "https://api.dhan.co"
+  tradehull: "https://api.tradehull.com"
+
+rate_limit: 100

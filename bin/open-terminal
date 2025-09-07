@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Convenience script to open Terminal/iTerm in the project directory
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Try to open iTerm2 first (preferred), fall back to Terminal.app
+if command -v open >/dev/null 2>&1; then
+  # Check if iTerm2 is installed
+  if [ -d "/Applications/iTerm.app" ]; then
+    open -a iTerm "$PROJECT_DIR"
+  else
+    open -a Terminal "$PROJECT_DIR"
+  fi
+else
+  echo "On macOS, use: open -a Terminal $PROJECT_DIR"
+  echo "Or: open -a iTerm $PROJECT_DIR"
+fi

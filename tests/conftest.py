@@ -6,11 +6,11 @@ Pytest configuration and shared fixtures for the DuckDB Financial Infrastructure
 """
 
 import pytest
-import asyncio
-from typing import Dict, List, Any, Generator
-from pathlib import Path
 import tempfile
 import shutil
+from pathlib import Path
+import asyncio
+from typing import Dict, List, Any, Generator
 from unittest.mock import Mock, MagicMock
 
 from src.domain.entities.market_data import MarketData, MarketDataBatch, OHLCV
@@ -232,6 +232,49 @@ class TestUtils:
             "message": message,
             "timestamp": "2025-09-05T10:00:00Z"
         }
+
+
+# Database fixtures for isolation
+@pytest.fixture(scope="session")
+def test_db_path(temp_dir):
+    """Create a test database path."""
+    return temp_dir / "test_financial_data.duckdb"
+
+
+@pytest.fixture
+def isolated_db_manager(test_db_path):
+    """Create an isolated database manager for each test."""
+    from src.infrastructure.core.database import DuckDBManager
+
+    # Copy the main database to test database for isolation
+    import shutil
+    main_db = Path("data/financial_data.duckdb")
+    if main_db.exists():
+        shutil.copy2(main_db, test_db_path)
+
+    manager = DuckDBManager(db_path=str(test_db_path))
+    yield manager
+    manager.close()
+
+
+@pytest.fixture
+def readonly_db_manager():
+    """Create a read-only database manager for tests that don't modify data."""
+    from src.infrastructure.core.database import DuckDBManager
+
+    manager = DuckDBManager(db_path="data/financial_data.duckdb")
+    # DuckDB read-only mode - doesn't lock the file
+    yield manager
+    manager.close()
+
+
+@pytest.fixture
+def mock_scanner(isolated_db_manager):
+    """Create a mock scanner with isolated database."""
+    from src.application.scanners.strategies.breakout_scanner import BreakoutScanner
+
+    scanner = BreakoutScanner(db_manager=isolated_db_manager)
+    yield scanner
 
 
 # Make TestUtils available to all tests

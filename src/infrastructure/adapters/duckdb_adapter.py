@@ -11,8 +11,10 @@ from duckdb import DuckDBPyConnection
 
 from ...domain.entities.market_data import MarketData, MarketDataBatch
 from ...domain.entities.symbol import Symbol
-from ..config.settings import get_settings
+from ..config.config_manager import ConfigManager
 from ..logging import get_logger
+from ...domain.exceptions import DatabaseConnectionError
+from ...infrastructure.utils.retry import retry_db_operation
 
 logger = get_logger(__name__)
 
@@ -20,11 +22,26 @@ logger = get_logger(__name__)
 class DuckDBAdapter:
     """DuckDB adapter for financial data operations."""
 
-    def __init__(self, database_path: Optional[str] = None):
-        """Initialize DuckDB adapter."""
-        self.settings = get_settings()
-        self.database_path = database_path or self.settings.database.path
+    def __init__(self, config_manager: Optional[ConfigManager] = None, database_path: Optional[str] = None):
+        """Initialize DuckDB adapter with centralized configuration."""
+        self.config_manager = config_manager
         self._connection: Optional[DuckDBPyConnection] = None
+
+        # Backward compatible database path loading
+        if self.config_manager:
+            try:
+                database_config = self.config_manager.get_config('database')
+                self.database_path = str(database_config.get('path', 'financial_data.duckdb'))
+            except Exception:
+                # Fallback to old settings if config loading fails
+                from ..config.settings import get_settings
+                self.settings = get_settings()
+                self.database_path = database_path or self.settings.database.path
+        else:
+            # Fallback to old settings
+            from ..config.settings import get_settings
+            self.settings = get_settings()
+            self.database_path = database_path or self.settings.database.path
 
         # Ensure database directory exists
         db_path = Path(self.database_path)
@@ -41,30 +58,61 @@ class DuckDBAdapter:
     def get_connection(self):
         """Get a database connection with automatic cleanup."""
         if self._connection is None:
-            # DuckDB configuration - only use valid options
-            config = {
-                'memory_limit': self.settings.database.memory_limit,
-                'threads': self.settings.database.threads,
-            }
-
-            # Add read_only mode if supported and requested
-            if hasattr(self.settings.database, 'read_only') and self.settings.database.read_only:
-                # DuckDB uses different syntax for read-only mode
-                config['access_mode'] = 'READ_ONLY'
-
-            # Handle case where file exists but is not a valid DuckDB database
-            if os.path.exists(self.database_path) and os.path.getsize(self.database_path) == 0:
-                # Remove empty file so DuckDB can create a new database
-                os.remove(self.database_path)
-
-            self._connection = duckdb.connect(self.database_path, config=config)
-            self._initialize_schema()
-
+            try:
+                # DuckDB configuration using ConfigManager or fallback
+                if self.config_manager:
+                    try:
+                        database_config = self.config_manager.get_config('database')
+                        config = {
+                            'memory_limit': database_config.get('memory_limit', '4GB'),
+                            'threads': database_config.get('threads', 4),
+                        }
+                        # Add read_only mode if configured
+                        if database_config.get('memory', False):
+                            config['memory'] = True
+                    except Exception:
+                        # Fallback to old settings
+                        from ..config.settings import get_settings
+                        self.settings = get_settings()
+                        config = {
+                            'memory_limit': self.settings.database.memory_limit,
+                            'threads': self.settings.database.threads,
+                        }
+                        if hasattr(self.settings.database, 'read_only') and self.settings.database.read_only:
+                            config['access_mode'] = 'READ_ONLY'
+                else:
+                    # Fallback to old settings
+                    from ..config.settings import get_settings
+                    self.settings = get_settings()
+                    config = {
+                        'memory_limit': self.settings.database.memory_limit,
+                        'threads': self.settings.database.threads,
+                    }
+                    if hasattr(self.settings.database, 'read_only') and self.settings.database.read_only:
+                        config['access_mode'] = 'READ_ONLY'
+                
+                # Handle case where file exists but is not a valid DuckDB database
+                if os.path.exists(self.database_path) and os.path.getsize(self.database_path) == 0:
+                    # Remove empty file so DuckDB can create a new database
+                    os.remove(self.database_path)
+                
+                self._connection = duckdb.connect(self.database_path, config=config)
+                self._initialize_schema()
+            except Exception as e:
+                error_msg = f"Failed to establish database connection: {str(e)}"
+                context = {'operation': 'connect', 'database_path': self.database_path}
+                exc = DatabaseConnectionError(error_msg, 'connect', context=context)
+                logger.error("Database connection failed", extra=exc.to_dict())
+                raise exc
+        
         try:
             yield self._connection
         except Exception as e:
-            logger.error("Database operation failed", error=str(e))
-            raise
+            error_msg = f"Database operation failed: {str(e)}"
+            context = {'operation': 'query_execution', 'database_path': self.database_path}
+            exc = DatabaseConnectionError(error_msg, 'execute', context=context)
+            logger.error("Database operation failed", extra=exc.to_dict())
+            raise exc
         finally:
             # Keep connection alive for reuse
             pass
@@ -130,22 +178,46 @@ class DuckDBAdapter:
 
     def execute_query(self, query: str, params: Optional[List[Any]] = None) -> pd.DataFrame:
         """Execute a SELECT query and return results as DataFrame."""
-        with self.get_connection() as conn:
-            if params:
-                result = conn.execute(query, params)
-            else:
-                result = conn.execute(query)
-            return result.df()
+        try:
+            with self.get_connection() as conn:
+                if params:
+                    result = conn.execute(query, params)
+                else:
+                    result = conn.execute(query)
+                return result.df()
+        except Exception as e:
+            error_msg = f"Query execution failed: {str(e)}"
+            context = {
+                'operation': 'execute_query',
+                'query': query[:100] + '...' if len(query) > 100 else query,
+                'params_count': len(params) if params else 0,
+                'database_path': self.database_path
+            }
+            exc = DatabaseConnectionError(error_msg, 'execute_query', context=context)
+            logger.error("Query execution failed", extra=exc.to_dict())
+            raise exc
 
     def execute_command(self, command: str, params: Optional[List[Any]] = None) -> int:
         """Execute a command (INSERT, UPDATE, DELETE) and return affected rows."""
-        with self.get_connection() as conn:
-            if params:
-                result = conn.execute(command, params)
-            else:
-                result = conn.execute(command)
-            # DuckDB doesn't have rows_changed, so we return 1 for success
-            return 1
+        try:
+            with self.get_connection() as conn:
+                if params:
+                    result = conn.execute(command, params)
+                else:
+                    result = conn.execute(command)
+                # DuckDB doesn't have rows_changed, so we return 1 for success
+                return 1
+        except Exception as e:
+            error_msg = f"Command execution failed: {str(e)}"
+            context = {
+                'operation': 'execute_command',
+                'command': command[:100] + '...' if len(command) > 100 else command,
+                'params_count': len(params) if params else 0,
+                'database_path': self.database_path
+            }
+            exc = DatabaseConnectionError(error_msg, 'execute_command', context=context)
+            logger.error("Command execution failed", extra=exc.to_dict())
+            raise exc
 
     def insert_market_data(self, data: Union[MarketData, MarketDataBatch]) -> int:
         """Insert market data into database."""
@@ -181,33 +253,44 @@ class DuckDBAdapter:
         if not batch.data:
             return 0
 
-        # Convert to DataFrame for efficient bulk insert
-        records = []
-        for data in batch.data:
-            records.append({
-                'symbol': data.symbol,
-                'timestamp': data.timestamp,
-                'open': float(data.ohlcv.open),
-                'high': float(data.ohlcv.high),
-                'low': float(data.ohlcv.low),
-                'close': float(data.ohlcv.close),
-                'volume': data.ohlcv.volume,
-                'timeframe': data.timeframe,
-                'date_partition': data.date_partition,
-            })
+        try:
+            # Convert to DataFrame for efficient bulk insert
+            records = []
+            for data in batch.data:
+                records.append({
+                    'symbol': data.symbol,
+                    'timestamp': data.timestamp,
+                    'open': float(data.ohlcv.open),
+                    'high': float(data.ohlcv.high),
+                    'low': float(data.ohlcv.low),
+                    'close': float(data.ohlcv.close),
+                    'volume': data.ohlcv.volume,
+                    'timeframe': data.timeframe,
+                    'date_partition': data.date_partition,
+                })
 
-        df = pd.DataFrame(records)
+            df = pd.DataFrame(records)
 
-        with self.get_connection() as conn:
-            # Use DuckDB's efficient bulk insert
-            conn.register('temp_data', df)
-            conn.execute("""
-                INSERT OR REPLACE INTO market_data
-                (symbol, timestamp, open, high, low, close, volume, timeframe, date_partition)
-                SELECT symbol, timestamp, open, high, low, close, volume, timeframe, date_partition
-                FROM temp_data
-            """)
-            return len(records)
+            with self.get_connection() as conn:
+                # Use DuckDB's efficient bulk insert
+                conn.register('temp_data', df)
+                conn.execute("""
+                    INSERT OR REPLACE INTO market_data
+                    (symbol, timestamp, open, high, low, close, volume, timeframe, date_partition)
+                    SELECT symbol, timestamp, open, high, low, close, volume, timeframe, date_partition
+                    FROM temp_data
+                """)
+                return len(records)
+        except Exception as e:
+            error_msg = f"Batch insert failed for {len(batch.data)} records: {str(e)}"
+            context = {
+                'operation': 'insert_batch',
+                'batch_size': len(batch.data),
+                'database_path': self.database_path
+            }
+            exc = DatabaseConnectionError(error_msg, 'insert_batch', context=context)
+            logger.error("Batch insert failed", extra=exc.to_dict())
+            raise exc
 
     def get_market_data(
         self,

@@ -144,36 +144,36 @@ class QueryRequest(BaseModel):
     symbol: Optional[str] = Field(
         None, 
         description="Stock symbol to filter by (e.g., 'RELIANCE', 'TCS')",
-        example="RELIANCE"
+        json_schema_extra={"example": "RELIANCE"}
     )
     start_date: Optional[date] = Field(
         None,
         description="Start date for filtering (YYYY-MM-DD format)",
-        example="2024-01-01"
+        json_schema_extra={"example": "2024-01-01"}
     )
     end_date: Optional[date] = Field(
         None,
         description="End date for filtering (YYYY-MM-DD format)",
-        example="2024-01-31"
+        json_schema_extra={"example": "2024-01-31"}
     )
     start_time: Optional[str] = Field(
         None, 
         pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
         description="Start time filter in HH:MM format (24-hour)",
-        example="09:15"
+        json_schema_extra={"example": "09:15"}
     )
     end_time: Optional[str] = Field(
         None, 
         pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
         description="End time filter in HH:MM format (24-hour)",
-        example="15:30"
+        json_schema_extra={"example": "15:30"}
     )
     limit: Optional[int] = Field(
         None, 
         gt=0, 
         le=10000,
         description="Maximum number of records to return (1-10000)",
-        example=1000
+        json_schema_extra={"example": 1000}
     )
 
 
@@ -186,35 +186,35 @@ class ResampleRequest(BaseModel):
     symbol: str = Field(
         ...,
         description="Stock symbol to resample (required)",
-        example="RELIANCE"
+        json_schema_extra={"example": "RELIANCE"}
     )
     timeframe: str = Field(
         ..., 
         description="Target timeframe for resampling",
-        example="1H",
+        json_schema_extra={"example": "1H"},
         pattern="^(1T|5T|15T|30T|1H|4H|1D|1W|1M)$"
     )
     start_date: Optional[date] = Field(
         None,
         description="Start date for resampling (YYYY-MM-DD format)",
-        example="2024-01-01"
+        json_schema_extra={"example": "2024-01-01"}
     )
     end_date: Optional[date] = Field(
         None,
         description="End date for resampling (YYYY-MM-DD format)",
-        example="2024-01-31"
+        json_schema_extra={"example": "2024-01-31"}
     )
     start_time: Optional[str] = Field(
         None, 
         pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
         description="Start time filter in HH:MM format",
-        example="09:15"
+        json_schema_extra={"example": "09:15"}
     )
     end_time: Optional[str] = Field(
         None, 
         pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
         description="End time filter in HH:MM format",
-        example="15:30"
+        json_schema_extra={"example": "15:30"}
     )
 
 
@@ -242,17 +242,17 @@ class CustomQueryRequest(BaseModel):
     query: str = Field(
         ..., 
         description="SQL query string (SELECT statements only for security)",
-        example="SELECT symbol, AVG(close) as avg_price FROM market_data WHERE symbol = ? GROUP BY symbol"
+        json_schema_extra={"example": "SELECT symbol, AVG(close) as avg_price FROM market_data WHERE symbol = ? GROUP BY symbol"}
     )
     params: Optional[List[Any]] = Field(
         None,
         description="Query parameters for prepared statements",
-        example=["RELIANCE"]
+        json_schema_extra={"example": ["RELIANCE"]}
     )
 
 
 class CorrelationRequest(BaseModel):
-    symbols: List[str] = Field(..., min_items=2)
+    symbols: List[str] = Field(..., min_length=2)
     timeframe: str = "1D"
     start_date: Optional[date] = None
     end_date: Optional[date] = None

@@ -1,0 +1,66 @@
+# DuckDB Financial Infrastructure - Requirements
+# ============================================
+#
+# This file contains all dependencies needed to run the DuckDB Financial Infrastructure.
+# It combines dependencies from pyproject.toml with additional packages for development and testing.
+#
+# Installation: pip install -r requirements.txt
+
+# Core dependencies (from pyproject.toml)
+duckdb>=0.10.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Reactive programming
+rx>=3.2.0
+
+# Data quality
+great-expectations>=0.18.0
+
+# Logging and observability
+structlog>=23.2.0
+opentelemetry-distro>=0.43b0
+opentelemetry-instrumentation-fastapi>=0.43b0
+prometheus-client>=0.19.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.11.0
+isort>=5.12.0
+mypy>=1.7.0
+pre-commit>=3.5.0
+
+# Additional utilities
+click>=8.1.0
+rich>=13.7.0
+python-dotenv>=1.0.0
+jinja2>=3.1.0
+
+# Notebook and visualization (from scanner requirements)
+jupyter>=1.0.0
+ipykernel>=6.0.0
+notebook>=6.4.0
+plotly>=5.17.0
+numpy>=1.21.0
+
+# Configuration
+pyyaml>=6.0
+
+# Enhanced logging
+python-json-logger>=2.0.0
+
+# Analytics dashboard
+streamlit>=1.28.0
+
+# Project installation
+-e .
+
+# Optional: For enhanced performance
+# streamlit-autorefresh>=1.0.0
+# streamlit-aggrid>=0.3.0

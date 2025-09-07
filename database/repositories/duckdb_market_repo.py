@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 
 import pandas as pd
 
+from functools import lru_cache
 from ...domain.entities.market_data import MarketData, MarketDataBatch, OHLCV
 from ...domain.repositories.market_data_repo import MarketDataRepository
 from ..adapters.duckdb_adapter import DuckDBAdapter
@@ -21,9 +22,41 @@ class DuckDBMarketDataRepository(MarketDataRepository):
         """Initialize repository with DuckDB adapter."""
         self.adapter = adapter or DuckDBAdapter()
         logger.info("DuckDB market data repository initialized")
+    
+    def _row_to_market_data(self, row) -> MarketData:
+        """Convert a DataFrame row to MarketData entity with proper dtype mapping."""
+        ohlcv = OHLCV(
+            open=Decimal(str(row['open'])),
+            high=Decimal(str(row['high'])),
+            low=Decimal(str(row['low'])),
+            close=Decimal(str(row['close'])),
+            volume=int(row['volume'])
+        )
+    
+        # Ensure date_partition is str as expected by entity
+        date_part = row['date_partition']
+        if hasattr(date_part, 'strftime'):
+            date_part = date_part.strftime('%Y-%m-%d')
+    
+        return MarketData(
+            symbol=row['symbol'],
+            timestamp=row['timestamp'].to_pydatetime(),
+            timeframe=row['timeframe'],
+            ohlcv=ohlcv,
+            date_partition=str(date_part)
+        )
 
     def save(self, data: MarketData) -> None:
-        """Save a single market data record."""
+        """Save a single MarketData record to the database.
+
+        Uses the adapter to perform the insertion and logs the outcome.
+
+        Args:
+            data (MarketData): The market data record to save.
+
+        Raises:
+            Exception: If saving fails.
+        """
         try:
             affected_rows = self.adapter.insert_market_data(data)
             if affected_rows > 0:
@@ -49,7 +82,16 @@ class DuckDBMarketDataRepository(MarketDataRepository):
             raise
 
     def save_batch(self, batch: MarketDataBatch) -> None:
-        """Save a batch of market data records."""
+        """Save a batch of MarketData records to the database.
+
+        Efficient bulk insertion for multiple records.
+
+        Args:
+            batch (MarketDataBatch): The batch of market data to save.
+
+        Raises:
+            Exception: If batch saving fails.
+        """
         try:
             affected_rows = self.adapter.insert_market_data(batch)
             logger.info(
@@ -75,7 +117,20 @@ class DuckDBMarketDataRepository(MarketDataRepository):
         end_date: date,
         timeframe: str = "1D"
     ) -> List[MarketData]:
-        """Find market data by symbol and date range."""
+        """Find market data records for a symbol within a date range.
+
+        Args:
+            symbol (str): The stock symbol.
+            start_date (date): Start date for the range.
+            end_date (date): End date for the range.
+            timeframe (str): Data timeframe, default '1D'.
+
+        Returns:
+            List[MarketData]: List of matching market data entities, sorted by timestamp.
+
+        Raises:
+            Exception: If retrieval fails.
+        """
         try:
             df = self.adapter.get_market_data(
                 symbol=symbol,
@@ -96,21 +151,7 @@ class DuckDBMarketDataRepository(MarketDataRepository):
 
             market_data_list = []
             for _, row in df.iterrows():
-                ohlcv = OHLCV(
-                    open=Decimal(str(row['open'])),
-                    high=Decimal(str(row['high'])),
-                    low=Decimal(str(row['low'])),
-                    close=Decimal(str(row['close'])),
-                    volume=int(row['volume'])
-                )
-
-                market_data = MarketData(
-                    symbol=row['symbol'],
-                    timestamp=row['timestamp'].to_pydatetime(),
-                    timeframe=row['timeframe'],
-                    ohlcv=ohlcv,
-                    date_partition=row['date_partition']
-                )
+                market_data = self._row_to_market_data(row)
                 market_data_list.append(market_data)
 
             logger.info(
@@ -135,12 +176,24 @@ class DuckDBMarketDataRepository(MarketDataRepository):
             )
             raise
 
+    @lru_cache(maxsize=128)
     def find_latest_by_symbol(
         self,
         symbol: str,
         limit: int = 100
     ) -> List[MarketData]:
-        """Find the latest market data records for a symbol."""
+        """Find the latest market data records for a symbol, sorted by timestamp DESC.
+
+        Args:
+            symbol (str): The stock symbol.
+            limit (int): Number of records to return, default 100.
+
+        Returns:
+            List[MarketData]: List of latest market data entities.
+
+        Raises:
+            Exception: If retrieval fails.
+        """
         try:
             df = self.adapter.get_latest_market_data(symbol=symbol, limit=limit)
 
@@ -150,21 +203,7 @@ class DuckDBMarketDataRepository(MarketDataRepository):
 
             market_data_list = []
             for _, row in df.iterrows():
-                ohlcv = OHLCV(
-                    open=Decimal(str(row['open'])),
-                    high=Decimal(str(row['high'])),
-                    low=Decimal(str(row['low'])),
-                    close=Decimal(str(row['close'])),
-                    volume=int(row['volume'])
-                )
-
-                market_data = MarketData(
-                    symbol=row['symbol'],
-                    timestamp=row['timestamp'].to_pydatetime(),
-                    timeframe=row['timeframe'],
-                    ohlcv=ohlcv,
-                    date_partition=row['date_partition']
-                )
+                market_data = self._row_to_market_data(row)
                 market_data_list.append(market_data)
 
             logger.info(
@@ -186,7 +225,18 @@ class DuckDBMarketDataRepository(MarketDataRepository):
             raise
 
     def exists(self, symbol: str, timestamp: str) -> bool:
-        """Check if market data exists for the given symbol and timestamp."""
+        """Check if a market data record exists for the given symbol and timestamp.
+
+        Args:
+            symbol (str): The stock symbol.
+            timestamp (str): The timestamp in ISO format.
+
+        Returns:
+            bool: True if the record exists, False otherwise.
+
+        Raises:
+            Exception: If check fails.
+        """
         try:
             query = """
                 SELECT COUNT(*) as count
@@ -215,7 +265,17 @@ class DuckDBMarketDataRepository(MarketDataRepository):
             raise
 
     def count_by_symbol(self, symbol: str) -> int:
-        """Count total records for a symbol."""
+        """Count the total number of market data records for a symbol.
+
+        Args:
+            symbol (str): The stock symbol.
+
+        Returns:
+            int: The number of records for the symbol.
+
+        Raises:
+            Exception: If count query fails.
+        """
         try:
             query = """
                 SELECT COUNT(*) as count
@@ -237,7 +297,17 @@ class DuckDBMarketDataRepository(MarketDataRepository):
             raise
 
     def get_date_range(self, symbol: str) -> Optional[Tuple[date, date]]:
-        """Get the date range for a symbol's data."""
+        """Get the date range (min/max date_partition) for a symbol's data.
+
+        Args:
+            symbol (str): The stock symbol.
+
+        Returns:
+            Optional[Tuple[date, date]]: Tuple of (start_date, end_date) or None if no data.
+
+        Raises:
+            Exception: If query fails.
+        """
         try:
             query = """
                 SELECT

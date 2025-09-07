@@ -34,8 +34,8 @@ database/
 ## 🚀 Usage
 
 ```python
-from database.adapters.duckdb_adapter import DuckDBAdapter
-from database.repositories.duckdb_market_repo import DuckDBMarketDataRepository
+from src.infrastructure.adapters.duckdb_adapter import DuckDBAdapter
+from src.infrastructure.adapters.market_data_repository import DuckDBMarketDataRepository
 
 # Initialize database connection
 adapter = DuckDBAdapter()

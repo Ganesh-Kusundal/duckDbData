@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import duckdb
 import pandas as pd
+import json
 from duckdb import DuckDBPyConnection
 
 from ...domain.entities.market_data import MarketData, MarketDataBatch
@@ -18,10 +19,21 @@ logger = get_logger(__name__)
 
 
 class DuckDBAdapter:
-    """DuckDB adapter for financial data operations."""
+    """DuckDB adapter for financial data operations.
+
+    Handles connection management, query execution, and data persistence for the financial platform.
+    Supports bulk operations and time-series optimized queries.
+    """
 
     def __init__(self, database_path: Optional[str] = None):
-        """Initialize DuckDB adapter."""
+        """Initialize the DuckDB adapter.
+
+        Args:
+            database_path (Optional[str]): Path to the DuckDB database file. If not provided, uses default from settings.
+
+        Raises:
+            ValueError: If invalid path is provided.
+        """
         self.settings = get_settings()
         self.database_path = database_path or self.settings.database.path
         self._connection: Optional[DuckDBPyConnection] = None
@@ -34,12 +46,23 @@ class DuckDBAdapter:
 
     @property
     def connection(self) -> Optional[DuckDBPyConnection]:
-        """Get the current database connection."""
+        """Get the current database connection.
+
+        Returns:
+            Optional[DuckDBPyConnection]: The active connection or None if not established.
+        """
         return self._connection
 
     @contextmanager
     def get_connection(self):
-        """Get a database connection with automatic cleanup."""
+        """Get a database connection with automatic cleanup.
+
+        Yields:
+            DuckDBPyConnection: The connection object for use in with block.
+
+        Raises:
+            Exception: If connection fails.
+        """
         if self._connection is None:
             # DuckDB configuration - only use valid options
             config = {
@@ -70,66 +93,40 @@ class DuckDBAdapter:
             pass
 
     def _initialize_schema(self):
-        """Initialize database schema if not exists."""
+        """Initialize database schema if not exists.
+
+        Loads schema definitions from configs/database.yaml and executes them.
+        Includes table creation and index setup.
+        """
+        # Load schema from config
+        schema_config = get_settings().database.schema
+
         with self.get_connection() as conn:
-            # Market data table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS market_data (
-                    symbol VARCHAR NOT NULL,
-                    timestamp TIMESTAMP NOT NULL,
-                    open DECIMAL(10,2) NOT NULL,
-                    high DECIMAL(10,2) NOT NULL,
-                    low DECIMAL(10,2) NOT NULL,
-                    close DECIMAL(10,2) NOT NULL,
-                    volume BIGINT NOT NULL,
-                    timeframe VARCHAR NOT NULL,
-                    date_partition DATE NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (symbol, timestamp, timeframe)
-                )
-            """)
+            # Create tables
+            for table_name, table_config in schema_config.items():
+                if 'create_sql' in table_config:
+                    conn.execute(table_config['create_sql'])
 
-            # Symbols table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS symbols (
-                    symbol VARCHAR PRIMARY KEY,
-                    name VARCHAR,
-                    sector VARCHAR,
-                    industry VARCHAR,
-                    exchange VARCHAR DEFAULT 'NSE',
-                    first_date DATE,
-                    last_date DATE,
-                    total_records BIGINT DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+            # Create indexes
+            if 'indexes' in schema_config:
+                for index_name, index_sql in schema_config['indexes'].items():
+                    conn.execute(index_sql)
 
-            # Scanner results table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS scanner_results (
-                    id VARCHAR PRIMARY KEY,
-                    scanner_name VARCHAR NOT NULL,
-                    symbol VARCHAR NOT NULL,
-                    timestamp TIMESTAMP NOT NULL,
-                    signals JSON,
-                    execution_time_ms FLOAT,
-                    success BOOLEAN DEFAULT TRUE,
-                    error_message VARCHAR,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Create indexes for performance
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_market_data_symbol_date ON market_data(symbol, date_partition)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_market_data_timestamp ON market_data(timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_scanner_results_symbol ON scanner_results(symbol)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_scanner_results_timestamp ON scanner_results(timestamp)")
-
-            logger.info("Database schema initialized")
+            logger.info("Database schema initialized from config")
 
     def execute_query(self, query: str, params: Optional[List[Any]] = None) -> pd.DataFrame:
-        """Execute a SELECT query and return results as DataFrame."""
+        """Execute a SELECT query and return results as DataFrame.
+
+        Args:
+            query (str): SQL SELECT query string.
+            params (Optional[List[Any]]): List of parameters for parameterized query.
+
+        Returns:
+            pd.DataFrame: Query results as Pandas DataFrame.
+
+        Raises:
+            Exception: If query execution fails.
+        """
         with self.get_connection() as conn:
             if params:
                 result = conn.execute(query, params)
@@ -138,7 +135,18 @@ class DuckDBAdapter:
             return result.df()
 
     def execute_command(self, command: str, params: Optional[List[Any]] = None) -> int:
-        """Execute a command (INSERT, UPDATE, DELETE) and return affected rows."""
+        """Execute a DML command (INSERT, UPDATE, DELETE) and return number of affected rows.
+
+        Args:
+            command (str): SQL DML command string.
+            params (Optional[List[Any]]): List of parameters for parameterized command.
+
+        Returns:
+            int: Number of rows affected by the command.
+
+        Raises:
+            Exception: If command execution fails.
+        """
         with self.get_connection() as conn:
             if params:
                 result = conn.execute(command, params)
@@ -147,7 +155,18 @@ class DuckDBAdapter:
             return result.rows_changed
 
     def insert_market_data(self, data: Union[MarketData, MarketDataBatch]) -> int:
-        """Insert market data into database."""
+        """Insert market data into the database, supporting single records or batches.
+
+        Args:
+            data (Union[MarketData, MarketDataBatch]): Single record or batch to insert.
+
+        Returns:
+            int: Number of rows inserted.
+
+        Raises:
+            ValueError: If invalid data type.
+            Exception: If insertion fails.
+        """
         if isinstance(data, MarketData):
             return self._insert_single_market_data(data)
         elif isinstance(data, MarketDataBatch):
@@ -156,7 +175,17 @@ class DuckDBAdapter:
             raise ValueError("Invalid data type for insertion")
 
     def _insert_single_market_data(self, data: MarketData) -> int:
-        """Insert a single market data record."""
+        """Insert a single MarketData record into the market_data table.
+
+        Args:
+            data (MarketData): The market data record to insert.
+
+        Returns:
+            int: Number of rows affected (1 if successful).
+
+        Raises:
+            Exception: If insertion fails.
+        """
         query = """
             INSERT OR REPLACE INTO market_data
             (symbol, timestamp, open, high, low, close, volume, timeframe, date_partition)
@@ -176,7 +205,17 @@ class DuckDBAdapter:
         return self.execute_command(query, params)
 
     def _insert_market_data_batch(self, batch: MarketDataBatch) -> int:
-        """Insert a batch of market data records."""
+        """Insert a batch of MarketData records using efficient bulk operation.
+
+        Args:
+            batch (MarketDataBatch): The batch of market data to insert.
+
+        Returns:
+            int: Number of records inserted.
+
+        Raises:
+            Exception: If bulk insertion fails.
+        """
         if not batch.data:
             return 0
 
@@ -215,7 +254,20 @@ class DuckDBAdapter:
         end_date: str,
         timeframe: str = "1D"
     ) -> pd.DataFrame:
-        """Retrieve market data for a symbol and date range."""
+        """Retrieve market data for a symbol within a date range.
+
+        Args:
+            symbol (str): Stock symbol.
+            start_date (str): Start date in 'YYYY-MM-DD' format.
+            end_date (str): End date in 'YYYY-MM-DD' format.
+            timeframe (str): Data timeframe, e.g., '1D', '1H'.
+
+        Returns:
+            pd.DataFrame: Market data records.
+
+        Raises:
+            Exception: If query fails.
+        """
         query = """
             SELECT * FROM market_data
             WHERE symbol = ?
@@ -226,7 +278,18 @@ class DuckDBAdapter:
         return self.execute_query(query, [symbol, start_date, end_date, timeframe])
 
     def get_latest_market_data(self, symbol: str, limit: int = 100) -> pd.DataFrame:
-        """Get the most recent market data for a symbol."""
+        """Get the most recent market data records for a symbol.
+
+        Args:
+            symbol (str): Stock symbol.
+            limit (int): Number of records to return, default 100.
+
+        Returns:
+            pd.DataFrame: Latest market data records, sorted by timestamp DESC.
+
+        Raises:
+            Exception: If query fails.
+        """
         query = """
             SELECT * FROM market_data
             WHERE symbol = ?
@@ -236,7 +299,17 @@ class DuckDBAdapter:
         return self.execute_query(query, [symbol, limit])
 
     def upsert_symbol(self, symbol: Symbol) -> int:
-        """Insert or update symbol information."""
+        """Insert or update symbol information in the symbols table.
+
+        Args:
+            symbol (Symbol): The symbol entity to upsert.
+
+        Returns:
+            int: Number of rows affected.
+
+        Raises:
+            Exception: If upsert fails.
+        """
         query = """
             INSERT OR REPLACE INTO symbols
             (symbol, name, sector, industry, exchange, first_date, last_date, total_records, updated_at)
@@ -255,7 +328,17 @@ class DuckDBAdapter:
         return self.execute_command(query, params)
 
     def get_symbol(self, symbol: str) -> Optional[Symbol]:
-        """Retrieve symbol information."""
+        """Retrieve symbol information from the symbols table.
+
+        Args:
+            symbol (str): The symbol code to retrieve.
+
+        Returns:
+            Optional[Symbol]: The symbol entity or None if not found.
+
+        Raises:
+            Exception: If query fails.
+        """
         query = "SELECT * FROM symbols WHERE symbol = ?"
         df = self.execute_query(query, [symbol])
 
@@ -275,7 +358,14 @@ class DuckDBAdapter:
         )
 
     def get_all_symbols(self) -> List[Symbol]:
-        """Get all symbols from database."""
+        """Get all symbols from the symbols table, sorted by symbol code.
+
+        Returns:
+            List[Symbol]: List of all symbol entities.
+
+        Raises:
+            Exception: If query fails.
+        """
         query = "SELECT * FROM symbols ORDER BY symbol"
         df = self.execute_query(query)
 
@@ -302,7 +392,22 @@ class DuckDBAdapter:
         success: bool = True,
         error_message: Optional[str] = None
     ) -> str:
-        """Save scanner execution results."""
+        """Save scanner execution results to the scanner_results table.
+
+        Args:
+            scanner_name (str): Name of the scanner.
+            symbol (str): Symbol scanned.
+            signals (List[Dict[str, Any]]): List of signal dictionaries.
+            execution_time_ms (float): Execution time in milliseconds.
+            success (bool): Whether the scan was successful.
+            error_message (Optional[str]): Error message if failed.
+
+        Returns:
+            str: The generated result ID.
+
+        Raises:
+            Exception: If insertion fails.
+        """
         import uuid
         result_id = str(uuid.uuid4())
 
@@ -315,7 +420,7 @@ class DuckDBAdapter:
             result_id,
             scanner_name,
             symbol,
-            str(signals),  # JSON serialization
+            json.dumps(signals),  # JSON serialization
             execution_time_ms,
             success,
             error_message,
@@ -329,7 +434,19 @@ class DuckDBAdapter:
         symbol: Optional[str] = None,
         limit: int = 100
     ) -> pd.DataFrame:
-        """Retrieve scanner results with optional filtering."""
+        """Retrieve scanner results with optional filtering.
+
+        Args:
+            scanner_name (Optional[str]): Filter by scanner name.
+            symbol (Optional[str]): Filter by symbol.
+            limit (int): Maximum number of results, default 100.
+
+        Returns:
+            pd.DataFrame: Filtered scanner results, sorted by timestamp DESC.
+
+        Raises:
+            Exception: If query fails.
+        """
         conditions = []
         params = []
 
@@ -354,7 +471,14 @@ class DuckDBAdapter:
         return self.execute_query(query, params)
 
     def get_database_stats(self) -> Dict[str, Any]:
-        """Get database statistics."""
+        """Get comprehensive database statistics.
+
+        Returns:
+            Dict[str, Any]: Dictionary with stats for market_data, symbols, scanner_results.
+
+        Raises:
+            Exception: If any stats query fails.
+        """
         stats = {}
 
         # Market data stats
@@ -387,16 +511,37 @@ class DuckDBAdapter:
         return stats
 
     def close(self):
-        """Close database connection."""
+        """Close the database connection.
+
+        Ensures resources are cleaned up.
+        """
         if self._connection:
             self._connection.close()
             self._connection = None
             logger.info("Database connection closed")
 
     def __enter__(self):
-        """Context manager entry."""
+        """Context manager entry point."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
+        """Context manager exit point, closes connection."""
         self.close()
+
+    def execute_parquet_query(self, parquet_path: str, query: str = "") -> pd.DataFrame:
+        """Execute a query on a Parquet file using DuckDB.
+
+        Args:
+            parquet_path (str): Path to the Parquet file.
+            query (str): Additional SQL query to append after SELECT * FROM parquet.
+
+        Returns:
+            pd.DataFrame: Results from the Parquet query.
+
+        Raises:
+            Exception: If query fails.
+        """
+        with self.get_connection() as conn:
+            full_query = f"SELECT * FROM '{parquet_path}' {query}" if query else f"SELECT * FROM '{parquet_path}'"
+            result = conn.execute(full_query)
+            return result.df()

@@ -1,0 +1,24 @@
+# Analytics module configuration
+queries:
+  breakout_patterns:
+    timeout: 30
+    max_results: 1000
+
+rules:
+  - name: "high_volume"
+    pattern: "volume > avg_volume * 2"
+    params:
+      threshold: 2.0
+  - name: "price_breakout"
+    pattern: "close > highest_high_20"
+    params:
+      period: 20
+
+dashboard:
+  port: 8080
+  host: "localhost"
+
+indicators:
+  - rsi
+  - macd
+  - obv

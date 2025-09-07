@@ -43,34 +43,52 @@ class PatternStatistics:
 
 class PatternAnalyzer:
     """Analyzes stock data for breakout patterns."""
-
-    def __init__(self, db_connector: DuckDBAnalytics):
+    
+    def __init__(self, db_connector: DuckDBAnalytics, scanner_mode: Optional[str] = None):
         """
         Initialize pattern analyzer.
-
+        
         Args:
             db_connector: DuckDB analytics connector
+            scanner_mode: Optional scanner mode ('breakout', 'technical', etc.) for specialized analysis
         """
         self.db = db_connector
+        self.scanner_mode = scanner_mode or 'general'
         self.discovered_patterns: List[BreakoutPattern] = []
+        
+        logger.info(f"PatternAnalyzer initialized in {self.scanner_mode} mode")
 
     def discover_volume_spike_patterns(self,
                                      min_volume_multiplier: float = 1.5,
                                      min_price_move: float = 0.03,
-                                     time_window_minutes: int = 10) -> List[BreakoutPattern]:
+                                     time_window_minutes: int = 10,
+                                     scanner_mode: Optional[str] = None) -> List[BreakoutPattern]:
         """
         Discover volume spike patterns that lead to breakouts.
-
+        
         Args:
             min_volume_multiplier: Minimum volume increase required
             min_price_move: Minimum price move percentage
             time_window_minutes: Analysis window in minutes
-
+            scanner_mode: Scanner mode to adjust analysis parameters
+        
         Returns:
             List of discovered breakout patterns
         """
-        logger.info("Discovering volume spike patterns...")
-
+        effective_mode = scanner_mode or self.scanner_mode
+        
+        # Adjust parameters based on scanner mode
+        if effective_mode == 'breakout':
+            min_volume_multiplier = max(min_volume_multiplier, 2.0)  # Stricter for breakouts
+            min_price_move = max(min_price_move, 0.05)
+            time_window_minutes = min(time_window_minutes, 5)  # Shorter window for breakouts
+        elif effective_mode == 'technical':
+            min_volume_multiplier = max(min_volume_multiplier, 1.8)
+            min_price_move = max(min_price_move, 0.04)
+        # 'general' mode uses default parameters
+        
+        logger.info(f"Discovering volume spike patterns in {effective_mode} mode (vol_mult={min_volume_multiplier}, price_move={min_price_move})")
+        
         try:
             df = self.db.get_volume_spike_patterns(
                 min_volume_multiplier=min_volume_multiplier,
@@ -102,19 +120,31 @@ class PatternAnalyzer:
 
     def discover_time_window_patterns(self,
                                     start_time: str = "09:35",
-                                    end_time: str = "09:50") -> List[BreakoutPattern]:
+                                    end_time: str = "09:50",
+                                    scanner_mode: Optional[str] = None) -> List[BreakoutPattern]:
         """
         Discover patterns within specific time windows.
-
+        
         Args:
             start_time: Start of analysis window (HH:MM)
             end_time: End of analysis window (HH:MM)
-
+            scanner_mode: Scanner mode to adjust time windows
+        
         Returns:
             List of discovered time-window patterns
         """
-        logger.info(f"Discovering time window patterns: {start_time}-{end_time}")
-
+        effective_mode = scanner_mode or self.scanner_mode
+        
+        # Adjust time windows based on scanner mode
+        if effective_mode == 'breakout':
+            start_time = "09:30"  # Earlier for breakout detection
+            end_time = "09:45"
+        elif effective_mode == 'technical':
+            start_time = "09:40"
+            end_time = "10:00"  # Later window for technical confirmation
+        
+        logger.info(f"Discovering time window patterns in {effective_mode} mode: {start_time}-{end_time}")
+        
         try:
             df = self.db.get_time_window_analysis(start_time, end_time)
 
@@ -221,10 +251,10 @@ class PatternAnalyzer:
     def _calculate_confidence_score(self, row: pd.Series) -> float:
         """
         Calculate confidence score for a pattern.
-
+        
         Args:
             row: DataFrame row with pattern data
-
+        
         Returns:
             Confidence score (0-1)
         """
@@ -233,6 +263,13 @@ class PatternAnalyzer:
 
         # Combine scores with weights
         confidence = (volume_score * 0.6) + (price_score * 0.4)
+        
+        # Adjust confidence based on scanner mode (stored in pattern)
+        if hasattr(self, 'scanner_mode') and self.scanner_mode == 'breakout':
+            confidence = min(confidence * 1.1, 1.0)  # Slight boost for breakout mode
+        elif self.scanner_mode == 'technical':
+            confidence = min(confidence * 0.95, 1.0)  # Slightly more conservative
+        
         return round(confidence, 3)
 
     def _extract_technical_indicators(self, row: pd.Series) -> Dict[str, Any]:

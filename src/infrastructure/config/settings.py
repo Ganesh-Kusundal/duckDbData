@@ -180,14 +180,13 @@ class AppSettings(BaseSettings):
     cache: CacheSettings = CacheSettings()
     security: SecuritySettings = SecuritySettings()
 
-    class Config:
-        """Pydantic configuration."""
-
+    model_config = ConfigDict(
         # env_prefix = "DUCKDB_FINANCIAL_"
         # env_nested_delimiter = "__"
         # env_file = None
         # env_ignore_empty = True
         # case_sensitive = True
+    )
 
 
 def yaml_settings_source(settings: BaseSettings) -> Dict[str, Any]:

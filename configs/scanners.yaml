@@ -1,0 +1,33 @@
+# Scanners module configuration
+default:
+  obv_threshold: 100.0
+  volume_multiplier: 1.5
+  breakout_period: 20
+
+strategies:
+  breakout:
+    obv_lookback_period: 10
+    obv_threshold: 1.5
+    consolidation_period: 5
+    consolidation_range_pct: 3.0
+    breakout_volume_ratio: 2.0
+    momentum_period: 3
+    resistance_break_pct: 1.0
+    min_price: 50
+    max_price: 2000
+    max_results: 20
+  technical:
+    obv_threshold: 1.0
+    required_indicators: ['rsi', 'macd', 'bollinger_bands']
+    rsi_overbought: 70
+    rsi_oversold: 30
+    macd_threshold: 0.1
+    bb_deviation: 1.5
+    min_price: 50
+    max_price: 2000
+    max_results: 50
+    consolidation_period: 5
+
+backtest:
+  max_iterations: 1000
+  timeframe: "1d"

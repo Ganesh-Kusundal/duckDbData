@@ -1,0 +1,46 @@
+# Global configuration for the trading platform
+scanners:
+  default:
+    obv_threshold: 100.0
+    volume_multiplier: 1.5
+    breakout_period: 20
+  strategies: {}
+  backtest:
+    max_iterations: 1000
+    timeframe: "1d"
+
+database:
+  path: "financial_data.duckdb"
+  memory: false
+  extension_dir: "./extensions"
+  max_connections: 5
+
+brokers:
+  default: "dhan"
+  brokers:
+    dhan:
+      api_key: "dummy_key"
+      api_secret: "dummy_secret"
+      access_token: "dummy_token"
+    tradehull:
+      api_key: "dummy_key_th"
+      api_secret: "dummy_secret_th"
+      access_token: "dummy_token_th"
+  endpoints:
+    dhan: "https://api.dhan.co"
+    tradehull: "https://api.tradehull.com"
+  rate_limit: 100
+
+analytics:
+  queries:
+    breakout_patterns:
+      timeout: 30
+      max_results: 1000
+  rules: []
+  dashboard:
+    port: 8080
+    host: "localhost"
+  indicators:
+    - rsi
+    - macd
+    - obv

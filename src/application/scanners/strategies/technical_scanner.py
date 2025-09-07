@@ -33,11 +33,11 @@ class TechnicalScanner(BaseScanner):
     def scan(self, scan_date: date, cutoff_time: time = time(9, 50)) -> pd.DataFrame:
         """
         Scan for stocks with favorable technical patterns.
-
+        
         Args:
             scan_date: Date to scan
             cutoff_time: Time cutoff for scanning
-
+        
         Returns:
             DataFrame with technical scan results
         """
@@ -46,6 +46,16 @@ class TechnicalScanner(BaseScanner):
         # Get available symbols for technical analysis
         all_symbols = self.get_available_symbols()
         print(f"📈 Analyzing {len(all_symbols)} symbols for technical indicators...")
+
+        # Get pattern scores for all symbols (optional analytics integration)
+        pattern_scores = pd.DataFrame()
+        if hasattr(self, 'pattern_analyzer') and self.pattern_analyzer:
+            print("🔍 Integrating pattern analysis for enhanced technical scoring...")
+            try:
+                pattern_scores = self.get_pattern_scores(all_symbols)
+                print(f"📈 Found pattern scores for {len(pattern_scores)} symbols")
+            except Exception as e:
+                print(f"⚠️  Pattern analysis failed, proceeding with basic scoring: {e}")
 
         # Simplified technical analysis query
         technical_query = """
@@ -129,19 +139,18 @@ class TechnicalScanner(BaseScanner):
                 ELSE 'NEUTRAL'
             END as momentum_signal,
 
-            -- Simple technical score
+            -- Simple technical score (basic - will be enhanced with patterns)
             CASE
                 WHEN current_price > avg_close AND ABS(price_change_pct) < 2 THEN 7  -- Moderate bullish
                 WHEN current_price > avg_close THEN 5  -- Bullish
                 WHEN current_price < avg_close THEN -3  -- Bearish
                 ELSE 1  -- Neutral
-            END as technical_score
+            END as basic_technical_score
 
         FROM latest_data
         WHERE current_price > ?
             AND current_price < ?
-            AND technical_score > 3  -- Only positive setups
-        ORDER BY technical_score DESC, ABS(price_change_pct) ASC
+        ORDER BY basic_technical_score DESC, ABS(price_change_pct) ASC
         LIMIT ?
         """
 
@@ -149,7 +158,7 @@ class TechnicalScanner(BaseScanner):
             scan_date, cutoff_time.strftime('%H:%M'),  # symbol_stats
             scan_date, cutoff_time.strftime('%H:%M'),  # latest_data
             self.config['min_price'], self.config['max_price'],  # price filters
-            self.config['max_results']  # limit
+            self.config['max_results'] * 2  # Get more candidates to filter after pattern scoring
         ]
 
         try:
@@ -158,6 +167,50 @@ class TechnicalScanner(BaseScanner):
             if result.empty:
                 print("⚠️  No stocks found with favorable technical patterns")
                 return pd.DataFrame()
+
+            # Merge with pattern scores if available
+            if not pattern_scores.empty and not result.empty:
+                # Merge pattern scores by symbol
+                result = result.merge(
+                    pattern_scores,
+                    on='symbol',
+                    how='left'
+                ).fillna({
+                    'confidence_score': 0.0,
+                    'volume_multiplier': 1.0
+                })
+
+                # Enhanced technical score incorporating pattern analysis
+                def calculate_enhanced_technical_score(row):
+                    basic_score = row.get('basic_technical_score', 0)
+                    confidence = row.get('confidence_score', 0.0)
+                    pattern_volume = row.get('volume_multiplier', 1.0)
+                    
+                    print(f"DEBUG TECHNICAL: symbol={row.get('symbol')}, basic={basic_score}, conf={confidence}, vol_mult={pattern_volume}")
+                    
+                    # Weight factors: 70% technicals, 20% pattern confidence, 10% pattern volume
+                    enhanced_score = (
+                        basic_score * 0.7 +
+                        confidence * 10 * 0.20 +  # Scale confidence (0-1) to 0-10
+                        (pattern_volume - 1.0) * 0.10  # Volume multiplier contribution
+                    )
+                    
+                    print(f"DEBUG TECHNICAL: enhanced_score={enhanced_score}")
+                    return round(enhanced_score, 2)
+                
+                result['technical_score'] = result.apply(calculate_enhanced_technical_score, axis=1)
+                
+                # Filter and sort by enhanced score (only positive setups)
+                print(f"DEBUG TECHNICAL FILTER: before filter len={len(result)}, scores={result['technical_score'].tolist()}")
+                result = result[result['technical_score'] > 3].sort_values('technical_score', ascending=False).head(self.config['max_results'])
+                print(f"DEBUG TECHNICAL FILTER: after filter len={len(result)}, symbols={result['symbol'].tolist()}")
+                
+                print(f"🎯 Enhanced technical scoring applied - top {len(result)} candidates after pattern analysis")
+            else:
+                # Fallback to basic score
+                result['technical_score'] = result['basic_technical_score']
+                result['confidence_score'] = 0.0
+                result['volume_multiplier'] = 1.0
 
             # Add additional analysis
             result['setup_type'] = result.apply(

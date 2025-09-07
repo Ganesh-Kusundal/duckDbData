@@ -1,0 +1,3 @@
+# Database layer requirements
+duckdb==0.10.2
+pandas==2.1.4

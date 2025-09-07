@@ -1,0 +1,4 @@
+symbol,breakout_price,open_price,current_high,current_low,current_volume,breakout_above_resistance,breakout_pct,volume_ratio,probability_score,scan_date,breakout_time,eod_price,eod_high,eod_low,eod_volume,price_change_pct,breakout_successful,day_range_pct,performance_rank,overall_success_rate
+SAMMAANCAP,134.66,136.42,136.61,134.44,870437,1.950000000000017,1.4480914896777195,1.2147703317798126,60.0,2025-09-05,09:50:00,137.62,137.71,137.5,122143,2.2,True,2.43,0.94,66.67
+HDFCLIFE,758.8,764.0,773.0,757.8,153733,14.200000000000045,1.8713758566157153,1.0,60.0,2025-09-05,09:50:00,760.45,760.5,760.05,10041,0.22,True,2.0,0.57,66.67
+RTNINDIA,62.86,63.41,63.5,62.71,670093,0.6400000000000006,1.0181355392936693,1.102487129015211,60.0,2025-09-05,09:50:00,62.09,62.14,61.99,122408,-1.22,False,2.4,0.46,66.67

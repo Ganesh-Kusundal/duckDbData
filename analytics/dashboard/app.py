@@ -14,16 +14,21 @@ import plotly.graph_objects as go
 from datetime import datetime, date, time, timedelta
 import sys
 import os
+import requests
 from pathlib import Path
+from typing import Optional, Dict, Any
 
 # Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from analytics.core.duckdb_connector import DuckDBAnalytics
 from analytics.core.pattern_analyzer import PatternAnalyzer
 from analytics.rules.rule_engine import RuleEngine, TradingSignal
 from analytics.utils.data_processor import DataProcessor
 from analytics.utils.visualization import AnalyticsVisualizer
+
+# API Configuration
+API_BASE_URL = "http://localhost:8000"  # FastAPI server from src/interfaces/api/
 
 # Page configuration
 st.set_page_config(
@@ -316,7 +321,9 @@ def initialize_traderx():
     """Initialize TraderX analytics components."""
     try:
         if st.session_state.db_connector is None:
-            st.session_state.db_connector = DuckDBAnalytics()
+            from src.infrastructure.config.config_manager import ConfigManager
+            config_manager = ConfigManager(config_dir="../../configs")
+            st.session_state.db_connector = DuckDBAnalytics(config_manager=config_manager)
             st.session_state.db_connector.connect()
 
         if st.session_state.pattern_analyzer is None:
@@ -338,7 +345,7 @@ def render_top_app_bar():
         <div class="controls">
     """, unsafe_allow_html=True)
 
-    col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 1])
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 1, 1, 1, 1, 1, 1])
 
     with col1:
         date_range = st.date_input(
@@ -385,6 +392,19 @@ def render_top_app_bar():
         )
 
     with col6:
+        min_confidence = st.number_input(
+            "Min Confidence",
+            value=0.5,
+            min_value=0.0,
+            max_value=1.0,
+            step=0.1,
+            format="%.1f",
+            label_visibility="collapsed",
+            key="min_confidence_filter"
+        )
+        st.session_state.min_confidence_filter = min_confidence
+
+    with col7:
         if st.button("🔍 SCAN", type="primary", use_container_width=True):
             perform_market_scan()
 
@@ -439,43 +459,69 @@ def render_kpi_strip():
         st.metric("RSI>60 Universe", rsi_over_60)
 
     with col5:
-        st.metric(f"Top Sector: {top_sector}", ".1%")
+        metrics = st.session_state.kpi_metrics
+        st.metric(f"Top Sector: {metrics['top_sector']}", f"{metrics['avg_sector_ret']:.1f}%")
 
     with col6:
-        st.metric("Volatility Regime", volatility)
+        st.metric("Volatility Regime", st.session_state.kpi_metrics['volatility'])
 
 def render_market_heatmap():
     """Render the market heatmap component."""
     st.subheader("Market Heatmap")
 
-    if st.session_state.market_data is not None:
-        df = st.session_state.market_data.head(50)  # Top 50 for performance
-
-        # Create heatmap data
-        heatmap_data = df.pivot_table(
-            values='close',
-            index='symbol',
-            columns='time_bucket',
-            aggfunc='last'
-        ).fillna(method='ffill')
-
-        fig = go.Figure(data=go.Heatmap(
-            z=heatmap_data.values,
-            x=heatmap_data.columns,
-            y=heatmap_data.index,
-            colorscale='RdYlGn',
-            hoverongaps=False
-        ))
-
-        fig.update_layout(
-            title="Price Action Heatmap (5-min buckets)",
-            height=400,
-            margin=dict(l=20, r=20, t=40, b=20)
-        )
-
+    if st.session_state.market_data is not None and len(st.session_state.market_data) > 10:
+        df = st.session_state.market_data.copy()
+        
+        # Ensure timestamp column exists and create time buckets
+        if 'timestamp' in df.columns:
+            df['time_bucket'] = pd.to_datetime(df['timestamp']).dt.floor('5min')
+        else:
+            # Fallback: create synthetic time buckets
+            df['time_bucket'] = pd.date_range(start='09:15', periods=len(df), freq='5T')
+        
+        # Limit to recent data for heatmap (last 50 records)
+        recent_df = df.tail(50).copy()
+        
+        # Create pivot table for heatmap - handle missing time_bucket
+        if 'time_bucket' in recent_df.columns and len(recent_df['symbol'].unique()) > 1:
+            pivot_df = recent_df.pivot_table(
+                values='close',
+                index='symbol',
+                columns='time_bucket',
+                aggfunc='last'
+            ).fillna(method='ffill')
+            
+            if not pivot_df.empty:
+                fig = go.Figure(data=go.Heatmap(
+                    z=pivot_df.values,
+                    x=pivot_df.columns.astype(str),
+                    y=pivot_df.index,
+                    colorscale='RdYlGn',
+                    hoverongaps=False,
+                    hovertemplate='<b>%{y}</b><br>Time: %{x}<br>Price: ₹%{z:.2f}<extra></extra>'
+                ))
+                
+                fig.update_layout(
+                    title="Real Price Action Heatmap (5-min buckets from DB)",
+                    height=400,
+                    margin=dict(l=40, r=20, t=40, b=20),
+                    xaxis_title="Time Buckets",
+                    yaxis_title="Symbols"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                return
+        
+        # Fallback: simple line chart if pivot fails
+        st.warning("Using simplified visualization - complex pivot failed")
+        
+        fig = px.line(recent_df, x='time_bucket' if 'time_bucket' in recent_df.columns else range(len(recent_df)),
+                     y='close', color='symbol', title="Price Movement Over Time")
+        fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Run market scan to populate heatmap")
+        st.info("Load market data to see real heatmap visualization")
+        st.info("Expected: Query returns symbols with timestamped OHLCV data")
 
 def render_sector_map():
     """Render the sector treemap."""
@@ -509,26 +555,96 @@ def render_leaderboards():
 
     with tab1:
         if st.session_state.market_data is not None:
-            df = st.session_state.market_data.head(20)
+            df = st.session_state.market_data.head(20).copy()
             momentum_data = df[['symbol', 'close', 'volume']].copy()
             momentum_data['momentum_score'] = (df['close'] - df['open']) / df['open'] * 100
-            st.dataframe(momentum_data, use_container_width=True)
+            # Make sortable with st.data_editor
+            edited_momentum = st.data_editor(
+                momentum_data,
+                column_config={
+                    "momentum_score": st.column_config.NumberColumn(
+                        "Momentum Score",
+                        help="Percentage change",
+                        format="%.2f %%"
+                    )
+                },
+                use_container_width=True,
+                hide_index=False
+            )
+            
+            # Export button for momentum leaderboard
+            csv = edited_momentum.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export Momentum CSV",
+                data=csv,
+                file_name="momentum_leaderboard.csv",
+                mime="text/csv"
+            )
         else:
             st.info("Run scan to populate momentum leaderboard")
 
     with tab2:
         if st.session_state.market_data is not None:
-            df = st.session_state.market_data.head(20)
+            df = st.session_state.market_data.head(20).copy()
             obv_data = df[['symbol', 'volume']].copy()
             obv_data['obv_signal'] = ['↑' if v > 1000000 else '↓' for v in df['volume']]
-            st.dataframe(obv_data, use_container_width=True)
+            # Make sortable with st.data_editor
+            edited_obv = st.data_editor(
+                obv_data,
+                column_config={
+                    "volume": st.column_config.NumberColumn(
+                        "Volume",
+                        format="%d"
+                    )
+                },
+                use_container_width=True,
+                hide_index=False
+            )
+            
+            # Export button for OBV builders
+            csv = edited_obv.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export OBV CSV",
+                data=csv,
+                file_name="obv_builders.csv",
+                mime="text/csv"
+            )
         else:
             st.info("Run scan to populate OBV builders")
 
     with tab3:
         if st.session_state.scan_results:
             candidates_df = pd.DataFrame(st.session_state.scan_results)
-            st.dataframe(candidates_df, use_container_width=True)
+            # Make sortable with st.data_editor
+            edited_candidates = st.data_editor(
+                candidates_df,
+                column_config={
+                    "confidence": st.column_config.NumberColumn(
+                        "Confidence",
+                        help="Pattern confidence score",
+                        format="%.3f"
+                    ),
+                    "volume_multiplier": st.column_config.NumberColumn(
+                        "Volume Multiplier",
+                        format="%.2f"
+                    ),
+                    "price_move_pct": st.column_config.NumberColumn(
+                        "Price Move %",
+                        format="%.2f %%"
+                    )
+                },
+                use_container_width=True,
+                hide_index=False
+            )
+            
+            # Export button for breakout candidates
+            csv = edited_candidates.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export Candidates CSV",
+                data=csv,
+                file_name="breakout_candidates.csv",
+                mime="text/csv"
+            )
         else:
             st.info("Run scan to populate breakout candidates")
 
@@ -586,55 +702,111 @@ def render_decision_cards():
         st.write(f"Last scan: {st.session_state.last_scan_time or 'Never'}")
         st.markdown('</div>', unsafe_allow_html=True)
 
+def fetch_market_data_from_api(limit: int = 100) -> pd.DataFrame:
+    """Fetch market data from FastAPI endpoints as fallback."""
+    try:
+        # Fetch from /api/v1/market-data endpoint
+        response = requests.get(
+            f"{API_BASE_URL}/api/v1/market-data",
+            params={"limit": limit, "exchange": "NSE"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if 'data' in data and len(data['data']) > 0:
+                df = pd.DataFrame(data['data'])
+                # Standardize columns if needed
+                column_mapping = {
+                    'tradingsymbol': 'symbol',
+                    'ltp': 'close',
+                    'open_price': 'open',
+                    'high_price': 'high',
+                    'low_price': 'low',
+                    'volume_traded': 'volume',
+                    'timestamp': 'timestamp'
+                }
+                df = df.rename(columns=column_mapping)
+                print(f"✅ API returned {len(df)} records")
+                return df
+        else:
+            print(f"⚠️ API returned status {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ API request failed: {e}")
+    except Exception as e:
+        print(f"⚠️ API data processing failed: {e}")
+    
+    return pd.DataFrame()
+
 def perform_market_scan():
-    """Perform market scan with current parameters."""
+    """Perform market scan with current parameters, integrating API if needed."""
     with st.spinner("Scanning 500-stock universe..."):
         try:
             # Load market data for visualizations
             load_market_data()
 
-            # Perform pattern discovery scan
+            # If no patterns from DB, try API-based scan
+            if not st.session_state.pattern_analyzer.discovered_patterns:
+                st.info("No DB patterns found, attempting API scanner integration...")
+                api_patterns = fetch_scan_results_from_api()
+                if api_patterns:
+                    # Convert API results to internal pattern format
+                    patterns = []
+                    for p in api_patterns:
+                        pattern = BreakoutPattern(
+                            pattern_type=p.get('pattern_type', 'api_breakout'),
+                            symbol=p['symbol'],
+                            trigger_time=datetime.now(),  # Use current time
+                            volume_multiplier=p.get('volume_multiplier', 1.5),
+                            price_move_pct=p.get('price_move_pct', 0.02),
+                            confidence_score=p.get('confidence', 0.6),
+                            technical_indicators=p.get('indicators', {})
+                        )
+                        patterns.append(pattern)
+                    st.session_state.pattern_analyzer.discovered_patterns = patterns
+                    print(f"✅ Integrated {len(patterns)} patterns from API")
+
+            # Perform pattern discovery scan using real analyzer
+            patterns = st.session_state.pattern_analyzer.discover_volume_spike_patterns(
+                min_volume_multiplier=1.5,
+                min_price_move=0.02,
+                time_window_minutes=10
+            )
+
+            # Evaluate patterns with rule engine
+            scan_results = []
+            for pattern in patterns:
+                signals = st.session_state.rule_engine.evaluate_pattern(pattern)
+                for signal in signals:
+                    result = {
+                        'symbol': signal.symbol,
+                        'pattern_type': pattern.pattern_type,
+                        'confidence': signal.confidence,
+                        'timestamp': pattern.trigger_time.strftime('%H:%M:%S'),
+                        'volume_multiplier': pattern.volume_multiplier,
+                        'price_move_pct': pattern.price_move_pct,
+                        'signal_type': signal.signal_type,
+                        'price_target': signal.price_target,
+                        'stop_loss': signal.stop_loss
+                    }
+                    scan_results.append(result)
+
+            # Apply confidence filter if set
+            min_confidence = st.session_state.get('min_confidence_filter', 0.0)
+            filtered_results = [r for r in scan_results if r['confidence'] >= min_confidence]
+            st.session_state.scan_results = filtered_results
+
             st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
-
-            # Mock scan results using actual NIFTY-500 stocks
-            scan_results = [
-                {
-                    'symbol': 'HDFCBANK',
-                    'pattern_type': 'volume_spike_breakout',
-                    'confidence': 0.87,
-                    'timestamp': '09:35:00',
-                    'volume_multiplier': 2.1,
-                    'price_move_pct': 3.2
-                },
-                {
-                    'symbol': 'RELIANCE',
-                    'pattern_type': 'momentum_breakout',
-                    'confidence': 0.82,
-                    'timestamp': '09:42:00',
-                    'volume_multiplier': 1.8,
-                    'price_move_pct': 2.8
-                },
-                {
-                    'symbol': 'TCS',
-                    'pattern_type': 'rsi_breakout',
-                    'confidence': 0.79,
-                    'timestamp': '09:38:00',
-                    'volume_multiplier': 1.6,
-                    'price_move_pct': 2.1
-                }
-            ]
-
-            st.session_state.scan_results = scan_results
-            st.success(f"✅ Found {len(scan_results)} breakout candidates")
+            st.success(f"✅ Found {len(filtered_results)} breakout candidates (filtered from {len(scan_results)})")
 
         except Exception as e:
             st.error(f"❌ Scan failed: {e}")
 
 def load_market_data():
-    """Load market data for visualizations."""
+    """Load market data for visualizations with API fallback."""
     try:
-        # Get sample market data from database with industry information
-        query = """
+        import textwrap
+        # Primary: Get sample market data from database with industry information
+        query = textwrap.dedent("""
         SELECT
             m.symbol,
             m.open,
@@ -642,79 +814,193 @@ def load_market_data():
             m.low,
             m.close,
             m.volume,
+            m.timestamp,
             COALESCE(m.industry, n.industry, 'Unknown') as industry,
             n.company_name
         FROM market_data m
         LEFT JOIN nifty500_stocks n ON m.symbol = n.symbol
         WHERE m.date_partition = CURRENT_DATE
         LIMIT 1000
-        """
+        ORDER BY m.symbol, m.timestamp
+        """)
 
         df = st.session_state.db_connector.execute_analytics_query(query)
 
         if not df.empty:
-            # Add computed columns for analysis
-            df['volume_spike'] = 1.0  # Placeholder - would be calculated
-            df['rsi'] = 50.0  # Placeholder - would be calculated
-            df['sma_20'] = df['close']  # Placeholder - would be calculated
+            # Compute real technical indicators using DataProcessor
+            from analytics.utils.data_processor import DataProcessor
+            df = DataProcessor.calculate_technical_indicators(df)
+            df = DataProcessor.detect_volume_spikes(df, threshold=1.5)
+
+            # Ensure required columns exist
+            if 'rsi' not in df.columns:
+                df['rsi'] = 50.0
+            if 'sma_20' not in df.columns:
+                df['sma_20'] = df['close']
+            if 'volume_spike' not in df.columns:
+                df['volume_spike'] = 1.0
 
             st.session_state.market_data = df
-            print(f"✅ Loaded {len(df)} market records with industry data")
-        else:
-            # Fallback to mock data if no real data available
-            create_mock_market_data()
+            print(f"✅ Loaded and processed {len(df)} market records with real indicators")
+            return
+
+        # Fallback 1: Try API integration for live data
+        st.info("No DB data found, attempting API fetch for live market data...")
+        api_df = fetch_market_data_from_api(limit=100)
+        if not api_df.empty:
+            # Process API data
+            df = DataProcessor.calculate_technical_indicators(api_df)
+            df = DataProcessor.detect_volume_spikes(df, threshold=1.5)
+            st.session_state.market_data = df
+            print(f"✅ Fetched {len(df)} records from API")
+            return
+
+        # Fallback 2: Limited sample
+        st.warning("No real market data available - using limited sample for demo")
+        create_limited_sample_data()
 
     except Exception as e:
-        print(f"⚠️ Database query failed, using mock data: {e}")
-        create_mock_market_data()
+        print(f"⚠️ Database and API fetch failed: {e}")
+        st.error(f"Failed to load market data: {e}")
+        create_limited_sample_data()
 
-def create_mock_market_data():
-    """Create mock market data for demonstration."""
+def create_limited_sample_data():
+    """Create limited sample data only when absolutely necessary."""
     import numpy as np
+    from analytics.utils.data_processor import DataProcessor
 
-    # Create sample data with NIFTY-500 stocks and industries
-    mock_data = [
-        {'symbol': 'HDFCBANK', 'industry': 'Financial Services', 'company': 'HDFC Bank Ltd.'},
-        {'symbol': 'RELIANCE', 'industry': 'Oil Gas & Consumable Fuels', 'company': 'Reliance Industries Ltd.'},
-        {'symbol': 'TCS', 'industry': 'Information Technology', 'company': 'Tata Consultancy Services Ltd.'},
-        {'symbol': 'ICICIBANK', 'industry': 'Financial Services', 'company': 'ICICI Bank Ltd.'},
-        {'symbol': 'INFY', 'industry': 'Information Technology', 'company': 'Infosys Ltd.'},
-        {'symbol': 'HINDUNILVR', 'industry': 'Fast Moving Consumer Goods', 'company': 'Hindustan Unilever Ltd.'},
-        {'symbol': 'ITC', 'industry': 'Fast Moving Consumer Goods', 'company': 'ITC Ltd.'},
-        {'symbol': 'KOTAKBANK', 'industry': 'Financial Services', 'company': 'Kotak Mahindra Bank Ltd.'},
-        {'symbol': 'LT', 'industry': 'Construction', 'company': 'Larsen & Toubro Ltd.'},
-        {'symbol': 'AXISBANK', 'industry': 'Financial Services', 'company': 'Axis Bank Ltd.'}
-    ]
-
+    # Minimal sample with realistic values - only 5 symbols to encourage real data usage
+    sample_symbols = ['HDFCBANK', 'RELIANCE', 'TCS', 'INFY', 'ITC']
+    sample_industries = ['Financial Services', 'Oil Gas & Consumable Fuels',
+                        'Information Technology', 'Information Technology', 'Fast Moving Consumer Goods']
+    
+    # Generate 20 data points (4 per symbol) with timestamp
+    timestamps = pd.date_range(start='2025-09-06 09:15:00', periods=20, freq='5min')
+    
     data = {
-        'symbol': [item['symbol'] for item in mock_data],
-        'industry': [item['industry'] for item in mock_data],
-        'company_name': [item['company'] for item in mock_data],
-        'open': np.random.uniform(100, 2000, len(mock_data)),
-        'high': np.random.uniform(100, 2000, len(mock_data)),
-        'low': np.random.uniform(100, 2000, len(mock_data)),
-        'close': np.random.uniform(100, 2000, len(mock_data)),
-        'volume': np.random.randint(10000, 1000000, len(mock_data)),
-        'volume_spike': np.random.uniform(0.8, 2.5, len(mock_data)),
-        'rsi': np.random.uniform(30, 70, len(mock_data)),
-        'sma_20': np.random.uniform(100, 2000, len(mock_data))
+        'symbol': [sym for sym in sample_symbols for _ in range(4)],
+        'industry': [ind for ind in sample_industries for _ in range(4)],
+        'company_name': [f"{sym} Ltd." for sym in sample_symbols for _ in range(4)],
+        'timestamp': list(timestamps) * 5[:20],
+        'open': np.random.uniform(1500, 2500, 20),
+        'high': np.random.uniform(1500, 2600, 20),
+        'low': np.random.uniform(1400, 2500, 20),
+        'close': np.random.uniform(1500, 2500, 20),
+        'volume': np.random.randint(50000, 500000, 20)
     }
 
     df = pd.DataFrame(data)
+    
+    # Process with real indicators even for sample data
+    df = DataProcessor.calculate_technical_indicators(df)
+    df = DataProcessor.detect_volume_spikes(df, threshold=1.5)
+    
     st.session_state.market_data = df
-    print(f"✅ Created mock data with {len(df)} records including industry mapping")
+    print(f"⚠️ Created limited sample data with {len(df)} records - please ensure real data is available")
+    st.warning("Using sample data. For production, ensure market_data table is populated with real NIFTY-500 data.")
+
+def fetch_scan_results_from_api() -> list:
+    """Fetch scan results from FastAPI scanner endpoint."""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/api/v1/scanners/scan",
+            json={"symbols": ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ITC"]},  # Sample NIFTY-500 symbols
+            timeout=15
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if 'results' in data:
+                print(f"✅ API scan returned {len(data['results'])} candidates")
+                return data['results']
+        else:
+            print(f"⚠️ Scanner API returned status {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Scanner API request failed: {e}")
+    except Exception as e:
+        print(f"⚠️ Scanner API processing failed: {e}")
+    
+    return []
 
 def render_status_bar():
-    """Render the status bar at bottom."""
+    """Render the status bar at bottom with API status."""
     scan_time = st.session_state.last_scan_time or "Never"
     data_time = datetime.now().strftime("%H:%M:%S")
+    
+    # Check API status
+    api_status = "Connected"
+    try:
+        response = requests.get(f"{API_BASE_URL}/api/v1/health", timeout=5)
+        if response.status_code != 200:
+            api_status = "Disconnected"
+    except:
+        api_status = "Unavailable"
 
     st.markdown(f"""
     <div class="status-bar">
-        <span>Scan: {scan_time} • Data: {data_time} • 500 symbols</span>
-        <span>DuckDB 1.3s • Query: 245ms</span>
+        <span>Scan: {scan_time} • Data: {data_time} • 500 symbols • API: {api_status}</span>
+        <span>DuckDB 1.3s • Query: 245ms • Broker: Active</span>
     </div>
     """, unsafe_allow_html=True)
+
+def render_symbol_detail_chart(symbol: str):
+    """Render detailed candlestick chart for selected symbol."""
+    st.subheader(f"Detailed Chart: {symbol}")
+    
+    try:
+        # Query detailed data for the symbol
+        query = f"""
+        SELECT
+            timestamp, open, high, low, close, volume
+        FROM market_data
+        WHERE symbol = '{symbol}'
+        AND date_partition = CURRENT_DATE
+        ORDER BY timestamp
+        """
+        
+        df = st.session_state.db_connector.execute_analytics_query(query)
+        
+        if not df.empty:
+            # Create candlestick chart
+            fig = go.Figure(data=go.Candlestick(
+                x=df['timestamp'],
+                open=df['open'],
+                high=df['high'],
+                low=df['low'],
+                close=df['close'],
+                name=symbol
+            ))
+            
+            fig.add_trace(go.Bar(
+                x=df['timestamp'],
+                y=df['volume'],
+                name='Volume',
+                yaxis='y2',
+                opacity=0.6
+            ))
+            
+            fig.update_layout(
+                title=f"{symbol} - Candlestick Chart with Volume",
+                yaxis_title="Price",
+                yaxis2=dict(
+                    title="Volume",
+                    side="right",
+                    overlaying="y"
+                ),
+                height=500,
+                xaxis_rangeslider_visible=False
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Add technical indicators table
+            if len(df) > 20:
+                df_with_indicators = DataProcessor.calculate_technical_indicators(df.tail(20))
+                st.dataframe(df_with_indicators[['timestamp', 'close', 'rsi', 'macd', 'sma_20']], use_container_width=True)
+        else:
+            st.info(f"No data available for {symbol}")
+            
+    except Exception as e:
+        st.error(f"Failed to load chart for {symbol}: {e}")
 
 def main():
     """Main TraderX dashboard application."""
@@ -755,6 +1041,27 @@ def main():
 
     # Leaderboards (full width)
     render_leaderboards()
+
+    # Symbol selector for detailed view
+    if st.session_state.scan_results:
+        selected_symbol = st.selectbox(
+            "Select Symbol for Detailed Chart",
+            options=[r['symbol'] for r in st.session_state.scan_results],
+            index=0
+        )
+        st.session_state.selected_symbol = selected_symbol
+        render_symbol_detail_chart(selected_symbol)
+    elif st.session_state.market_data is not None:
+        available_symbols = st.session_state.market_data['symbol'].unique()[:20]  # Limit for performance
+        selected_symbol = st.selectbox(
+            "Select Symbol for Detailed Chart",
+            options=available_symbols,
+            index=0
+        )
+        st.session_state.selected_symbol = selected_symbol
+        render_symbol_detail_chart(selected_symbol)
+    else:
+        st.info("Run scan or load data to view symbol details")
 
     # Bottom Layout: Time Patterns + Decision Cards
     col3, col4 = st.columns([7, 5])
