@@ -39,11 +39,13 @@ class RelativeVolumeScanner(BaseScanner):
         Returns:
             DataFrame with stocks meeting criteria
         """
-        print(f"🔍 Scanning for relative volume >= {self.config['min_relative_volume']}x by {cutoff_time}")
+        min_rel_vol = self.config.get('min_relative_volume', 5.0)
+        print(f"🔍 Scanning for relative volume >= {min_rel_vol}x by {cutoff_time}")
 
         # Calculate date range for historical average
+        lookback_days = self.config.get('lookback_days', 14)
         end_date = scan_date - timedelta(days=1)  # Previous day
-        start_date = end_date - timedelta(days=self.config['lookback_days'] + 5)  # Buffer
+        start_date = end_date - timedelta(days=lookback_days + 5)  # Buffer
 
         # Build SQL query for relative volume analysis
         relative_volume_query = f"""
@@ -54,7 +56,7 @@ class RelativeVolumeScanner(BaseScanner):
                 strftime('%H:%M', timestamp) as time_slot,
                 AVG(volume) as avg_volume_at_time,
                 COUNT(*) as sample_days
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition BETWEEN ? AND ?
                 AND strftime('%H:%M', timestamp) <= ?
                 AND strftime('%H:%M', timestamp) >= '09:15'
@@ -72,7 +74,7 @@ class RelativeVolumeScanner(BaseScanner):
                     symbol,
                     date_partition,
                     SUM(volume) as daily_volume
-                FROM market_data
+                FROM market_data_unified
                 WHERE date_partition BETWEEN ? AND ?
                 GROUP BY symbol, date_partition
             ) daily_totals
@@ -91,15 +93,15 @@ class RelativeVolumeScanner(BaseScanner):
                 AVG(close) as avg_price,
                 MAX(high) as day_high,
                 MIN(low) as day_low,
-                (SELECT close FROM market_data m2
+                (SELECT close FROM market_data_unified m2
                  WHERE m2.symbol = m1.symbol
                    AND m2.date_partition = ?
                    AND m2.timestamp = MIN(m1.timestamp)) as open_price,
-                (SELECT close FROM market_data m2
+                (SELECT close FROM market_data_unified m2
                  WHERE m2.symbol = m1.symbol
                    AND m2.date_partition = ?
                    AND m2.timestamp = MAX(m1.timestamp)) as current_price
-            FROM market_data m1
+            FROM market_data_unified m1
             WHERE date_partition = ?
                 AND strftime('%H:%M', timestamp) <= ?
                 AND strftime('%H:%M', timestamp) >= '09:15'
@@ -145,23 +147,28 @@ class RelativeVolumeScanner(BaseScanner):
         """
 
         # Parameters for the query
-        min_sample_days = max(5, self.config['lookback_days'] // 3)
+        min_sample_days = max(5, lookback_days // 3)
+        min_avg_vol = self.config.get('min_avg_volume', 100000)
+        min_rel_vol = self.config.get('min_relative_volume', 5.0)
+        price_change_min = self.config.get('price_change_min', -2.0)
+        price_change_max = self.config.get('price_change_max', 2.0)
+        max_results = self.config.get('max_results', 50)
 
         params = [
-            start_date, end_date, cutoff_time.strftime('%H:%M'), min_sample_days,  # historical_volume
-            start_date, end_date, self.config['min_avg_volume'],  # historical_daily_avg
-            scan_date, scan_date, scan_date, cutoff_time.strftime('%H:%M'),  # current_day_volume
-            cutoff_time.strftime('%H:%M'),  # expected_volume
-            self.config['min_relative_volume'],  # relative volume filter
-            self.config['price_change_min'], self.config['price_change_max'],  # price change filter
-            self.config['max_results']  # limit
+            start_date.isoformat(), end_date.isoformat(), cutoff_time.isoformat(), min_sample_days,  # historical_volume
+            start_date.isoformat(), end_date.isoformat(), min_avg_vol,  # historical_daily_avg
+            scan_date.isoformat(), scan_date.isoformat(), scan_date.isoformat(), cutoff_time.isoformat(),  # current_day_volume
+            cutoff_time.isoformat(),  # expected_volume
+            min_rel_vol,  # relative volume filter
+            price_change_min, price_change_max,  # price change filter
+            max_results  # limit
         ]
 
         try:
             result = self._execute_query(relative_volume_query, params)
 
             if result.empty:
-                print(f"⚠️  No stocks found with relative volume >= {self.config['min_relative_volume']}x")
+                print(f"⚠️  No stocks found with relative volume >= {min_rel_vol}x")
                 return pd.DataFrame()
 
             # Add additional calculated fields

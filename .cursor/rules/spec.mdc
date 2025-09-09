@@ -1,0 +1,229 @@
+You must always follow a Spec-driven, step-by-step workflow, with strict real-world validation and data integrity requirements:
+
+	1.	Convert ideas into requirements (SPEC).
+	2.	Expand into technical design (DESIGN).
+	3.	Break into atomic tasks (TASKS).
+	4.	Execute one task at a time (tests first, code second).
+	5.	Present diffs + reviews for human audit.
+	6.	Commit only after approval, updating Steering Notes and Traceability.
+
+⸻
+
+🚫 Strict Data & Validation Guidelines
+
+- **No mock, sample, synthetic, or dummy data is permitted at any stage.**
+- **All validation, testing, and verification must be performed using actual data, real system resources, and functional end-to-end workflows.**
+- **Do not use stubs, fakes, or simulated components unless explicitly instructed and confirmed in writing.**
+- **If real data or resources are unavailable, halt and request explicit clarification before proceeding.**
+- **All tests must exercise real-world behavior and integration, not isolated or artificial scenarios.**
+
+⸻
+
+Workflow Flow
+	1.	Idea → SPEC.md
+
+	•	Input: Plain-English feature request.
+	•	Output: Requirements doc using Requirements Spec Template.
+
+	2.	SPEC.md → DESIGN.md
+
+	•	Input: Approved spec.
+	•	Output: Technical design using Design Template.
+
+	3.	DESIGN.md → TASKS.md
+
+	•	Input: Approved design.
+	•	Output: Sequential tasks using Task Plan Template.
+
+	4.	Task Execution Loop (repeat per task):
+
+	•	Write failing tests first (using actual data and real system calls).
+	•	Implement minimal code to pass tests.
+	•	Run commands locally.
+	•	Evaluate results.
+	•	Prepare Diff Review.
+	•	Pause for human approval.
+
+	5.	Approval → Commit
+
+	•	Use Commit Message Template.
+	•	Update Traceability and Steering Notes.
+
+⸻
+
+Templates
+	1.	Requirements Spec (SPEC.md)
+
+# Feature Specification — <Feature Name>
+
+## Problem Statement
+<Describe problem in 1–2 sentences.>
+
+## Scope
+- In Scope:
+- Out of Scope:
+
+## User Personas
+- <Persona>: <why they care>
+
+## User Stories
+- As a <persona>, I want <capability>, so that <benefit>.
+
+## Acceptance Criteria
+- Given <context>, When <action>, Then <expected outcome>.
+
+## Constraints
+- Performance: <…>
+- Compliance: <…>
+
+	2.	Technical Design (DESIGN.md)
+
+# Technical Design — <Feature Name>
+
+## Architecture Context
+<How feature fits into system.>
+
+## Data Flow
+1. Input
+2. Processing
+3. Output
+
+## Interfaces
+- Function signatures
+- API endpoints
+- CLI commands
+
+## Database Schema
+- Table <name>: columns + constraints
+
+## Error Handling
+<cases + fallbacks>
+
+## Observability
+- Logs, metrics
+
+## Performance
+- Complexity, caching
+
+	3.	Task Plan (TASKS.md)
+
+# Task Plan — <Feature Name>
+
+## Task 1: <Title>
+- Goal:
+- Changes:
+- Tests:
+- Commands:
+- Exit Criteria:
+- Risks:
+
+## Task 2: <Title>
+...
+
+	4.	Steering Notes (STEERING_NOTES.md)
+
+# Steering Notes
+
+## Coding Conventions
+- snake_case for vars, PascalCase for classes.
+
+## Tech Choices
+- DB: DuckDB
+- Broker: Dhan API v2
+
+## Do / Don’t
+- Prefer composition
+- Do not hardcode secrets
+
+## Glossary
+- Signal = buy/sell trigger
+- Zone = supply-demand region
+
+## Open Decisions
+- [ ] Example pending decision
+
+	5.	Traceability Matrix (TRACEABILITY.md)
+
+# Traceability Matrix
+
+| User Story | Acceptance Criteria | Design Element | Task ID | Test Case | Commit |
+|------------|----------------------|----------------|---------|-----------|--------|
+| US-01      | AC-01, AC-02         | Module X       | T-01    | test_x.py | a1b2c3 |
+
+	6.	Diff Review (DIFF_REVIEW.md)
+
+# Diff Review — Task <ID>
+
+## Summary
+- What changed
+- Why (link to SPEC/DESIGN/Task)
+
+## Diff
+```diff
+<code diff here>
+
+Tests
+	•	Added/Updated:
+	•	Results: Passed
+
+Risks & Notes
+	•	Migration impact:
+	•	Follow-ups:
+
+7) Commit Message (COMMIT_MESSAGE.md)  
+
+feat(): 
+
+Context:
+	•	Linked Spec: SPEC.md#
+	•	Linked Task: TASKS.md#
+
+Changes:
+	•	
+
+<bullet list>
+
+
+
+
+Tests:
+	•	<added/updated>
+	•	All tests passing
+
+Notes:
+	•	<migrations/configs/TODOs>
+
+---
+
+Rules & Guardrails  
+- Always go Spec → Design → Tasks → Execution → Diff → Commit.  
+- Never skip steps or code without spec/design.  
+- Run only local environment commands, no external calls without explicit permission.  
+- Keep diffs small, test-first, and reversible.  
+- Update Steering Notes and Traceability on every step.  
+- Wait for human approval before committing.  
+
+---
+
+Done Definition  
+A feature is Done only when:  
+- SPEC and DESIGN finalized.  
+- All tasks executed and tests pass.  
+- Diff reviewed and approved.  
+- Commit made with proper message.  
+- Steering Notes and Traceability updated.  
+
+---
+
+File Structure  
+All files must be created in a folder under `.meta/<context-name>/`
+
+.meta/
+//
+spec.md
+design.md
+tasks.md
+steering_notes.md
+traceability.md
+diff_review.md
+commit_message.md

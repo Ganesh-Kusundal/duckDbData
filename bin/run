@@ -2,3 +2,6 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 conda run -n duckdb_infra "$@"
+
+
+

@@ -108,13 +108,12 @@ async def perform_health_checks() -> dict:
 async def check_database_health() -> dict:
     """Check database connectivity and basic operations."""
     try:
-        from ....infrastructure.core.database import DuckDBManager
+        from ....infrastructure.adapters.duckdb_adapter import DuckDBAdapter
+        from ....infrastructure.config.settings import get_settings
 
-        db_manager = DuckDBManager()
-
-        with db_manager.get_connection() as conn:
-            result = conn.execute("SELECT COUNT(*) FROM market_data").fetchone()
-            record_count = result[0] if result else 0
+        adapter = DuckDBAdapter(database_path=get_settings().database.path)
+        df = adapter.execute_query("SELECT COUNT(*) AS cnt FROM market_data_unified")
+        record_count = int(df.iloc[0]["cnt"]) if not df.empty else 0
 
         return {
             'status': 'healthy',

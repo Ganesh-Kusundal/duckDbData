@@ -23,6 +23,8 @@ import numpy as np
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from src.infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
+
 class BacktestValidator:
     """
     Comprehensive backtest validation framework
@@ -53,8 +55,7 @@ class BacktestValidator:
     def initialize_database(self):
         """Initialize database connection"""
         try:
-            from src.infrastructure.core.database import DuckDBManager
-            self.db_manager = DuckDBManager()
+            self.db_manager = create_db_manager(db_path=self.db_path)
             print("✅ Database connection established")
         except Exception as e:
             print(f"❌ Database initialization failed: {e}")
@@ -422,7 +423,7 @@ class BacktestValidator:
 
             query = f"""
             SELECT timestamp, open, high, low, close, volume
-            FROM market_data
+            FROM market_data_unified
             WHERE symbol = '{symbol}'
             AND date_partition = '{trade_date}'
             AND timestamp >= '{start_datetime}'

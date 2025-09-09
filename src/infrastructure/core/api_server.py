@@ -12,7 +12,7 @@ import pandas as pd
 import logging
 import json
 
-from .database import DuckDBManager
+from .singleton_database import DuckDBConnectionManager
 from .query_api import QueryAPI, TimeFrame
 from .data_loader import DataLoader
 
@@ -128,10 +128,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global instances
-db_manager = None
-query_api = None
-data_loader = None
+# Global instances (will be created on demand)
+_db_manager: Optional[DuckDBConnectionManager] = None
+_query_api = None
+_data_loader = None
 
 
 # Pydantic models for request/response with comprehensive documentation
@@ -242,7 +242,7 @@ class CustomQueryRequest(BaseModel):
     query: str = Field(
         ..., 
         description="SQL query string (SELECT statements only for security)",
-        json_schema_extra={"example": "SELECT symbol, AVG(close) as avg_price FROM market_data WHERE symbol = ? GROUP BY symbol"}
+        json_schema_extra={"example": "SELECT symbol, AVG(close) as avg_price FROM market_data_unified WHERE symbol = ? GROUP BY symbol"}
     )
     params: Optional[List[Any]] = Field(
         None,
@@ -260,24 +260,24 @@ class CorrelationRequest(BaseModel):
 
 
 # Dependency to get database manager
-def get_db_manager():
-    global db_manager, query_api, data_loader
-    if db_manager is None:
-        db_manager = DuckDBManager()
-        db_manager.create_schema()
-        query_api = QueryAPI(db_manager)
-        data_loader = DataLoader(db_manager)
-    return db_manager
+def get_db_manager() -> DuckDBConnectionManager:
+    """Get database manager instance."""
+    from .singleton_database import create_db_manager
+    return create_db_manager()
 
 
 def get_query_api():
-    get_db_manager()  # Ensure initialization
-    return query_api
+    """Get query API instance."""
+    db_manager = get_db_manager()
+    from .query_api import QueryAPI
+    return QueryAPI(db_manager)
 
 
 def get_data_loader():
-    get_db_manager()  # Ensure initialization
-    return data_loader
+    """Get data loader instance."""
+    db_manager = get_db_manager()
+    from .data_loader import DataLoader
+    return DataLoader(db_manager)
 
 
 # Utility function to convert DataFrame to JSON
@@ -388,9 +388,10 @@ async def health_check():
         from datetime import datetime
         db = get_db_manager()
         # Simple query to test database connection
-        result = db.execute_custom_query("SELECT 1 as test")
+        with db.get_connection() as conn:
+            result = conn.execute("SELECT 1 as test").fetchone()
         return {
-            "status": "healthy", 
+            "status": "healthy",
             "database": "connected",
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "version": "1.0.0"
@@ -430,7 +431,7 @@ async def health_check():
               400: {"description": "Invalid request parameters"},
               500: {"description": "Internal server error"}
           })
-async def get_market_data(request: QueryRequest, db: DuckDBManager = Depends(get_db_manager)):
+async def get_market_data(request: QueryRequest, db: DuckDBConnectionManager = Depends(get_db_manager)):
     """
     ## Get Raw Market Data
     
@@ -648,7 +649,7 @@ async def get_volume_profile(
 
 
 @app.get("/symbols")
-async def get_symbols_info(db: DuckDBManager = Depends(get_db_manager)):
+async def get_symbols_info(db: DuckDBConnectionManager = Depends(get_db_manager)):
     """Get information about all symbols."""
     try:
         df = db.get_symbols_info()
@@ -676,7 +677,7 @@ async def get_symbols_info(db: DuckDBManager = Depends(get_db_manager)):
              },
              500: {"description": "Internal server error"}
          })
-async def get_available_symbols(db: DuckDBManager = Depends(get_db_manager)):
+async def get_available_symbols(db: DuckDBConnectionManager = Depends(get_db_manager)):
     """
     ## Get Available Symbols
     
@@ -730,7 +731,7 @@ async def load_symbol_data(
     symbol: str,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
-    db: DuckDBManager = Depends(get_db_manager)
+    db: DuckDBConnectionManager = Depends(get_db_manager)
 ):
     """Load data for a specific symbol into the database."""
     try:

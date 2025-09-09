@@ -15,17 +15,18 @@ from rich.text import Text
 # Import with fallback handling
 try:
     from duckdb_financial_infra.infrastructure.logging import get_logger
-    from duckdb_financial_infra.infrastructure.core.database import DuckDBManager
+    from duckdb_financial_infra.infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
 except ImportError:
     try:
         # Try relative imports for development
         from ...infrastructure.logging import get_logger
-        from ...infrastructure.core.database import DuckDBManager
+        from ...infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
     except ImportError:
         # Final fallback
         import logging
         get_logger = lambda name: logging.getLogger(name)
-        DuckDBManager = None
+        DuckDBConnectionManager = None
+        create_db_manager = None
 
 logger = get_logger(__name__)
 console = Console()
@@ -212,7 +213,7 @@ def cleanup(ctx):
         ) as progress:
             # Database optimization
             task1 = progress.add_task("🗄️  Optimizing database...", total=None)
-            db_manager = DuckDBManager()
+            db_manager = create_db_manager()
 
             with db_manager.get_connection() as conn:
                 # Run optimization queries
@@ -271,7 +272,7 @@ def get_system_info():
 def get_database_status():
     """Get database health status."""
     try:
-        db_manager = DuckDBManager()
+        db_manager = create_db_manager()
 
         with db_manager.get_connection() as conn:
             # Get basic stats

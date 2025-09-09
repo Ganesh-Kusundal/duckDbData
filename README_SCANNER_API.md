@@ -168,6 +168,81 @@ This document provides a comprehensive analysis and implementation of the Scanne
 }
 ```
 
+## 🔌 Scanner/Runner Injection Patterns
+
+### Dependency Injection with Ports & Adapters
+
+The API uses a clean architecture pattern with dependency injection to ensure testability and maintainability. Here are the key patterns:
+
+#### 1. Scanner Factory Pattern
+```python
+# Get scanner with injected dependencies
+from src.app.startup import get_scanner
+
+# Create CRP scanner with proper port injection
+crp_scanner = get_scanner('crp', db_path='data/financial_data.duckdb')
+
+# Create breakout scanner with injected dependencies
+breakout_scanner = get_scanner('breakout', db_path='data/financial_data.duckdb')
+```
+
+#### 2. Two-Phase Runner Construction
+```python
+# Import infrastructure at the edge (CLI entry point)
+from src.infrastructure.adapters.market_read_adapter import DuckDBMarketReadAdapter
+
+# Create runner instance
+runner = TwoPhaseIntradayRunner(db_path='data/financial_data.duckdb')
+
+# Inject dependencies at runtime
+market_read_port = DuckDBMarketReadAdapter(database_path='data/financial_data.duckdb')
+runner.initialize_database(market_read_port)
+
+# Run business logic with injected dependencies
+runner.run_daily_flow()
+```
+
+#### 3. API Route Construction
+```python
+# Helper functions for dependency injection in API routes
+def get_breakout_scanner() -> BreakoutScanner:
+    """Get breakout scanner with injected port."""
+    from src.infrastructure.adapters.scanner_read_adapter import DuckDBScannerReadAdapter
+    from src.application.scanners.strategies.breakout_scanner import BreakoutScanner
+
+    scanner_read_port = DuckDBScannerReadAdapter()
+    return BreakoutScanner(scanner_read_port=scanner_read_port)
+
+def get_crp_scanner() -> CRPScanner:
+    """Get CRP scanner with injected port."""
+    from src.infrastructure.adapters.scanner_read_adapter import DuckDBScannerReadAdapter
+    from src.application.scanners.strategies.crp_scanner import CRPScanner
+
+    scanner_read_port = DuckDBScannerReadAdapter()
+    return CRPScanner(scanner_read_port=scanner_read_port)
+```
+
+#### 4. Settings-Driven Configuration
+```python
+from src.infrastructure.config.settings import get_settings
+
+# Use settings for database path
+settings = get_settings()
+db_path = settings.database.path
+
+# Create adapters with settings
+scanner_read_port = DuckDBScannerReadAdapter(database_path=db_path)
+market_read_port = DuckDBMarketReadAdapter(database_path=db_path)
+```
+
+### Benefits of This Pattern
+
+- **Clean Separation**: Domain logic doesn't import infrastructure
+- **Testability**: Easy to mock ports for unit testing
+- **Maintainability**: Infrastructure changes don't affect domain
+- **Flexibility**: Different adapter implementations for different environments
+- **Configuration**: All dependencies configurable through settings
+
 ## 💻 Frontend Integration
 
 ### JavaScript/React Example

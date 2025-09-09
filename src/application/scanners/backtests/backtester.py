@@ -13,7 +13,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from src.infrastructure.core.database import DuckDBManager, QueryAPI
+from src.infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
+from src.infrastructure.core.query_api import QueryAPI
 from ..strategies.relative_volume_scanner import RelativeVolumeScanner
 from ..strategies.technical_scanner import TechnicalScanner
 
@@ -24,9 +25,9 @@ class Backtester:
     Evaluates scanner performance over historical data periods.
     """
 
-    def __init__(self, db_manager: DuckDBManager = None):
+    def __init__(self, db_manager: DuckDBConnectionManager = None):
         """Initialize backtester with database manager."""
-        self.db_manager = db_manager or DuckDBManager()
+        self.db_manager = db_manager or create_db_manager()
         self.query_api = QueryAPI(self.db_manager)
 
         # Initialize scanner strategies
@@ -40,7 +41,8 @@ class Backtester:
 
         print("🔬 Backtester initialized")
 
-    def backtest_scanner(self,
+    def backtest_scanner(
+                        self, 
                         scanner_name: str,
                         start_date: date,
                         end_date: date,
@@ -153,14 +155,14 @@ class Backtester:
                 m1.symbol,
                 m1.close as scan_price_0950,
                 m1.timestamp as scan_timestamp_0950
-            FROM market_data m1
+            FROM market_data_unified m1
             WHERE m1.date_partition = ?
                 AND m1.timestamp <= '09:50:00'
                 AND m1.symbol IN ({','.join(['?' for _ in symbols])})
                 AND m1.timestamp = (
                     -- Get the last data point before or exactly at 09:50
                     SELECT MAX(timestamp)
-                    FROM market_data m2
+                    FROM market_data_unified m2
                     WHERE m2.symbol = m1.symbol
                       AND m2.date_partition = m1.date_partition
                       AND m2.timestamp <= '09:50:00'
@@ -173,13 +175,13 @@ class Backtester:
                 m3.symbol,
                 m3.close as close_price_1530,
                 m3.timestamp as close_timestamp_1530
-            FROM market_data m3
+            FROM market_data_unified m3
             WHERE m3.date_partition = ?
                 AND m3.symbol IN ({','.join(['?' for _ in symbols])})
                 AND m3.timestamp = (
                     -- Get the final price of the trading day
                     SELECT MAX(timestamp)
-                    FROM market_data m4
+                    FROM market_data_unified m4
                     WHERE m4.symbol = m3.symbol
                       AND m4.date_partition = m3.date_partition
                       AND m4.timestamp >= '09:15:00'  -- Valid trading hours

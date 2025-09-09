@@ -39,14 +39,14 @@ def import_technical_scanner():
         print("⚠️  Technical scanner not available, will use only relative volume scanner")
         return None
 
-from src.infrastructure.core.database import DuckDBManager
+from src.infrastructure.singleton_database import DuckDBConnectionManager, create_db_manager
 
 class DailyIntradayScanner:
     """Main scanner system for daily intraday stock selection."""
 
-    def __init__(self, db_manager: DuckDBManager = None):
+    def __init__(self, db_manager: DuckDBConnectionManager = None):
         """Initialize scanner system."""
-        self.db_manager = db_manager or DuckDBManager()
+        self.db_manager = db_manager or create_db_manager()
 
         # Initialize scanner strategies
         from src.application.scanners.strategies.relative_volume_scanner import RelativeVolumeScanner
@@ -109,7 +109,7 @@ class DailyIntradayScanner:
 
         return marketplace_results
 
-    def run_specialized_scan(self,
+    def run_specialized_scan(
                            scan_date: date,
                            cutoff_time: time,
                            scanners: List[str] = None,

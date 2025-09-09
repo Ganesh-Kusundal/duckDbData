@@ -20,7 +20,7 @@ from enum import Enum
 import pandas as pd
 
 from ...domain.repositories.market_data_repo import MarketDataRepository
-from ...infrastructure.messaging.event_bus import EventBus
+from ...application.ports.event_bus_port import EventBusPort
 from ...infrastructure.logging import get_logger
 
 logger = get_logger(__name__)

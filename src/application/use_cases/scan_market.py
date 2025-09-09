@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from ...domain.repositories.market_data_repo import MarketDataRepository
 from ...domain.services.data_sync_service import DataSyncService
-from ...infrastructure.messaging.event_bus import EventBus
+from ...application.ports.event_bus_port import EventBusPort
 from ...infrastructure.logging import get_logger
 from ...domain.exceptions import ScannerError
 from ...infrastructure.utils.retry import retry_on_transient_errors

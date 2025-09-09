@@ -22,6 +22,8 @@ import multiprocessing as mp
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from src.infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
+
 class FastBacktester:
     """
     Fast backtester optimized for 2025 data with parallel processing
@@ -73,7 +75,7 @@ class FastBacktester:
         print("🚀 FAST ADVANCED TWO-PHASE SCANNER BACKTESTER")
         print("="*60)
         print(f"📅 Backtest Period: {self.start_date} to {self.end_date}")
-        print(f"💰 Initial Capital: ₹{self.initial_capital:,.0f}")
+        print(f"💰 Initial Capital: ₹{self.initial_capital:,0f}")
         print(f"⚡ Leverage: {self.leverage}x")
         print(f"📊 Max Positions: {self.max_positions}")
         print("="*60)
@@ -81,8 +83,7 @@ class FastBacktester:
     def initialize_database(self):
         """Initialize database connection"""
         try:
-            from src.infrastructure.core.database import DuckDBManager
-            self.db_manager = DuckDBManager()
+            self.db_manager = create_db_manager(db_path=self.db_path)
             print("✅ Database connection established")
         except Exception as e:
             print(f"❌ Database initialization failed: {e}")
@@ -93,7 +94,7 @@ class FastBacktester:
         try:
             query = f"""
             SELECT DISTINCT date_partition
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition >= '{self.start_date}'
             AND date_partition <= '{self.end_date}'
             ORDER BY date_partition
@@ -114,7 +115,7 @@ class FastBacktester:
 
             query = f"""
             SELECT timestamp, open, high, low, close, volume
-            FROM market_data
+            FROM market_data_unified
             WHERE symbol = '{symbol}'
             AND date_partition = '{trade_date}'
             AND timestamp >= '{start_datetime}'
@@ -300,18 +301,22 @@ class FastBacktester:
             setup_type = 'neutral'
 
             # LONG setup detection
-            if (latest['close'] > latest['vwap'] and
+            if (
+                latest['close'] > latest['vwap'] and
                 latest['close'] > latest['orb_high'] and
                 latest['obv_slope'] > 0.2 and
-                score > 0.6):
+                score > 0.6
+            ):
                 direction = 'LONG'
                 setup_type = 'breakout'
 
             # SHORT setup detection
-            elif (latest['close'] < latest['vwap'] and
-                  latest['close'] < latest['orb_low'] and
-                  latest['obv_slope'] < -0.2 and
-                  score > 0.6):
+            elif (
+                latest['close'] < latest['vwap'] and
+                latest['close'] < latest['orb_low'] and
+                latest['obv_slope'] < -0.2 and
+                score > 0.6
+            ):
                 direction = 'SHORT'
                 setup_type = 'breakdown'
 
@@ -497,7 +502,7 @@ class FastBacktester:
         try:
             query = f"""
             SELECT DISTINCT symbol
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition = '{trade_date}'
             ORDER BY symbol
             """
@@ -577,7 +582,7 @@ class FastBacktester:
         else:
             sharpe_ratio = 0
 
-        print(f"💰 Final Portfolio Value: ₹{self.portfolio_value:,.0f}")
+        print(f"💰 Final Portfolio Value: ₹{self.portfolio_value:,0f}")
         print(f"📈 Total Return: {total_return:.2f}%")
         print(f"🎯 Total Trades: {len(self.trades)}")
         print(f"📊 Win Rate: {win_rate:.1f}%")

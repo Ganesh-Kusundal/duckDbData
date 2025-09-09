@@ -63,22 +63,22 @@ class TechnicalIndicators:
     def calculate_sma(self, symbol: str, period: int = 20,
                      column: str = "close") -> IndicatorResult:
         """Calculate Simple Moving Average."""
-        query = f"""
+        query = """
         SELECT
             timestamp,
             symbol,
-            {column},
-            AVG({column}) OVER (
+            ?
+            AVG(?) OVER (
                 PARTITION BY symbol
                 ORDER BY timestamp
-                ROWS {period-1} PRECEDING
-            ) as sma_{period}
-        FROM market_data
-        WHERE symbol = '{symbol}'
+                ROWS ? PRECEDING
+            ) as sma_?
+        FROM market_data_unified
+        WHERE symbol = ?
         ORDER BY timestamp
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [column, column, period-1, period, symbol]).fetchdf()
 
         return IndicatorResult(
             name=f"SMA_{period}",
@@ -88,15 +88,15 @@ class TechnicalIndicators:
 
     def calculate_rsi(self, symbol: str, period: int = 14) -> IndicatorResult:
         """Calculate Relative Strength Index."""
-        query = f"""
+        query = """
         WITH price_changes AS (
             SELECT
                 timestamp,
                 symbol,
                 close,
                 close - LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp) as price_change
-            FROM market_data
-            WHERE symbol = '{symbol}'
+            FROM market_data_unified
+            WHERE symbol = ?
         ),
         gains_losses AS (
             SELECT
@@ -110,19 +110,19 @@ class TechnicalIndicators:
             SELECT
                 timestamp,
                 symbol,
-                AVG(gain) OVER (PARTITION BY symbol ORDER BY timestamp ROWS {period-1} PRECEDING) as avg_gain,
-                AVG(loss) OVER (PARTITION BY symbol ORDER BY timestamp ROWS {period-1} PRECEDING) as avg_loss
+                AVG(gain) OVER (PARTITION BY symbol ORDER BY timestamp ROWS ? PRECEDING) as avg_gain,
+                AVG(loss) OVER (PARTITION BY symbol ORDER BY timestamp ROWS ? PRECEDING) as avg_loss
             FROM gains_losses
         )
         SELECT
             timestamp,
             symbol,
-            100 - (100 / (1 + (avg_gain / NULLIF(avg_loss, 0)))) as rsi_{period}
+            100 - (100 / (1 + (avg_gain / NULLIF(avg_loss, 0)))) as rsi_?
         FROM avg_gains_losses
         ORDER BY timestamp
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [symbol, period-1, period-1, period]).fetchdf()
 
         return IndicatorResult(
             name=f"RSI_{period}",
@@ -133,7 +133,7 @@ class TechnicalIndicators:
     def calculate_bollinger_bands(self, symbol: str, period: int = 20,
                                  std_dev: float = 2.0) -> IndicatorResult:
         """Calculate Bollinger Bands."""
-        query = f"""
+        query = """
         WITH sma_calc AS (
             SELECT
                 timestamp,
@@ -142,29 +142,29 @@ class TechnicalIndicators:
                 AVG(close) OVER (
                     PARTITION BY symbol
                     ORDER BY timestamp
-                    ROWS {period-1} PRECEDING
+                    ROWS ? PRECEDING
                 ) as sma,
                 STDDEV(close) OVER (
                     PARTITION BY symbol
                     ORDER BY timestamp
-                    ROWS {period-1} PRECEDING
+                    ROWS ? PRECEDING
                 ) as stddev
-            FROM market_data
-            WHERE symbol = '{symbol}'
+            FROM market_data_unified
+            WHERE symbol = ?
         )
         SELECT
             timestamp,
             symbol,
             close,
             sma as middle_band,
-            sma + ({std_dev} * stddev) as upper_band,
-            sma - ({std_dev} * stddev) as lower_band,
-            (close - (sma - ({std_dev} * stddev))) / NULLIF((sma + ({std_dev} * stddev)) - (sma - ({std_dev} * stddev)), 0) as bb_position
+            sma + (? * stddev) as upper_band,
+            sma - (? * stddev) as lower_band,
+            (close - (sma - (? * stddev))) / NULLIF((sma + (? * stddev)) - (sma - (? * stddev)), 0) as bb_position
         FROM sma_calc
         ORDER BY timestamp
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [period-1, period-1, symbol, std_dev, std_dev, std_dev, std_dev, std_dev]).fetchdf()
 
         return IndicatorResult(
             name=f"BB_{period}_{std_dev}",
@@ -175,30 +175,30 @@ class TechnicalIndicators:
     def calculate_macd(self, symbol: str, fast_period: int = 12,
                       slow_period: int = 26, signal_period: int = 9) -> IndicatorResult:
         """Calculate MACD (Moving Average Convergence Divergence)."""
-        query = f"""
+        query = """
         WITH ema_fast AS (
             SELECT
                 timestamp,
                 symbol,
                 close,
-                close * (2.0 / ({fast_period} + 1)) +
-                LAG(close * (2.0 / ({fast_period} + 1)), 1) OVER (
+                close * (2.0 / (? + 1)) +
+                LAG(close * (2.0 / (? + 1)), 1) OVER (
                     PARTITION BY symbol ORDER BY timestamp
                 ) as ema_fast
             FROM market_data
-            WHERE symbol = '{symbol}'
+            WHERE symbol = ?
         ),
         ema_slow AS (
             SELECT
                 timestamp,
                 symbol,
                 close,
-                close * (2.0 / ({slow_period} + 1)) +
-                LAG(close * (2.0 / ({slow_period} + 1)), 1) OVER (
+                close * (2.0 / (? + 1)) +
+                LAG(close * (2.0 / (? + 1)), 1) OVER (
                     PARTITION BY symbol ORDER BY timestamp
                 ) as ema_slow
             FROM market_data
-            WHERE symbol = '{symbol}'
+            WHERE symbol = ?
         ),
         macd_calc AS (
             SELECT
@@ -218,12 +218,12 @@ class TechnicalIndicators:
                 AVG(macd_line) OVER (
                     PARTITION BY symbol
                     ORDER BY timestamp
-                    ROWS {signal_period-1} PRECEDING
+                    ROWS ? PRECEDING
                 ) as signal_line,
                 macd_line - AVG(macd_line) OVER (
                     PARTITION BY symbol
                     ORDER BY timestamp
-                    ROWS {signal_period-1} PRECEDING
+                    ROWS ? PRECEDING
                 ) as histogram
             FROM macd_calc
         )
@@ -231,7 +231,7 @@ class TechnicalIndicators:
         ORDER BY timestamp
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [fast_period, fast_period, symbol, slow_period, slow_period, symbol, signal_period-1, signal_period-1]).fetchdf()
 
         return IndicatorResult(
             name=f"MACD_{fast_period}_{slow_period}_{signal_period}",
@@ -246,7 +246,7 @@ class TechnicalIndicators:
 
     def calculate_volatility(self, symbol: str, window: int = 30) -> IndicatorResult:
         """Calculate rolling volatility."""
-        query = f"""
+        query = """
         WITH returns AS (
             SELECT
                 timestamp,
@@ -255,7 +255,7 @@ class TechnicalIndicators:
                 (close - LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp)) /
                 NULLIF(LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp), 0) as daily_return
             FROM market_data
-            WHERE symbol = '{symbol}'
+            WHERE symbol = ?
         )
         SELECT
             timestamp,
@@ -264,18 +264,18 @@ class TechnicalIndicators:
             STDDEV(daily_return) OVER (
                 PARTITION BY symbol
                 ORDER BY timestamp
-                ROWS {window-1} PRECEDING
+                ROWS ? PRECEDING
             ) * SQRT(252) as annualized_volatility,
             STDDEV(daily_return) OVER (
                 PARTITION BY symbol
                 ORDER BY timestamp
-                ROWS {window-1} PRECEDING
+                ROWS ? PRECEDING
             ) as rolling_volatility
         FROM returns
         ORDER BY timestamp
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [symbol, window-1, window-1]).fetchdf()
 
         return IndicatorResult(
             name=f"VOLATILITY_{window}",
@@ -306,14 +306,14 @@ class FinancialAnalytics:
 
     def _analyze_symbol_returns(self, symbol: str, start_date: str, end_date: str) -> TimeSeriesAnalysis:
         """Analyze returns for a single symbol."""
-        query = f"""
+        query = """
         WITH daily_prices AS (
             SELECT
                 date_trunc('day', timestamp) as date,
                 FIRST(close) as close_price
             FROM market_data
-            WHERE symbol = '{symbol}'
-              AND timestamp BETWEEN '{start_date}' AND '{end_date}'
+            WHERE symbol = ?
+              AND timestamp BETWEEN ? AND ?
             GROUP BY date_trunc('day', timestamp)
             ORDER BY date
         ),
@@ -334,7 +334,7 @@ class FinancialAnalytics:
         ORDER BY date
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [symbol, start_date, end_date]).fetchdf()
 
         # Calculate metrics
         returns = df['daily_return'].dropna()
@@ -366,18 +366,18 @@ class FinancialAnalytics:
         returns_data = []
 
         for symbol in symbols:
-            query = f"""
+            query = """
             SELECT
                 date_trunc('day', timestamp) as date,
                 (close - LAG(close) OVER (ORDER BY timestamp)) /
                 NULLIF(LAG(close) OVER (ORDER BY timestamp), 0) as daily_return
             FROM market_data
-            WHERE symbol = '{symbol}'
-              AND timestamp BETWEEN '{start_date}' AND '{end_date}'
+            WHERE symbol = ?
+              AND timestamp BETWEEN ? AND ?
             ORDER BY date
             """
 
-            df = self.connection.execute(query).fetchdf()
+            df = self.connection.execute(query, [symbol, start_date, end_date]).fetchdf()
             df = df.set_index('date')
             returns_data.append(df['daily_return'].rename(symbol))
 
@@ -411,13 +411,13 @@ class FinancialAnalytics:
 
     def risk_metrics(self, symbol: str, confidence_level: float = 0.95) -> Dict[str, float]:
         """Calculate comprehensive risk metrics."""
-        query = f"""
+        query = """
         WITH returns AS (
             SELECT
                 (close - LAG(close) OVER (ORDER BY timestamp)) /
                 NULLIF(LAG(close) OVER (ORDER BY timestamp), 0) as daily_return
             FROM market_data
-            WHERE symbol = '{symbol}'
+            WHERE symbol = ?
             ORDER BY timestamp
         )
         SELECT
@@ -432,7 +432,7 @@ class FinancialAnalytics:
         WHERE daily_return IS NOT NULL
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [symbol]).fetchdf()
 
         if df.empty:
             return {}
@@ -452,13 +452,13 @@ class FinancialAnalytics:
 
     def _calculate_sortino_ratio(self, symbol: str) -> float:
         """Calculate Sortino ratio (downside deviation only)."""
-        query = f"""
+        query = """
         WITH returns AS (
             SELECT
                 (close - LAG(close) OVER (ORDER BY timestamp)) /
                 NULLIF(LAG(close) OVER (ORDER BY timestamp), 0) as daily_return
             FROM market_data
-            WHERE symbol = '{symbol}'
+            WHERE symbol = ?
         ),
         downside AS (
             SELECT
@@ -474,7 +474,7 @@ class FinancialAnalytics:
         WHERE r.daily_return IS NOT NULL
         """
 
-        df = self.connection.execute(query).fetchdf()
+        df = self.connection.execute(query, [symbol]).fetchdf()
 
         if df.empty or df.iloc[0]['downside_deviation'] == 0:
             return 0

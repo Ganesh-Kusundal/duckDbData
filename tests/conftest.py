@@ -244,7 +244,7 @@ def test_db_path(temp_dir):
 @pytest.fixture
 def isolated_db_manager(test_db_path):
     """Create an isolated database manager for each test."""
-    from src.infrastructure.core.database import DuckDBManager
+    from src.infrastructure.core.singleton_database import create_db_manager
 
     # Copy the main database to test database for isolation
     import shutil
@@ -252,7 +252,7 @@ def isolated_db_manager(test_db_path):
     if main_db.exists():
         shutil.copy2(main_db, test_db_path)
 
-    manager = DuckDBManager(db_path=str(test_db_path))
+    manager = create_db_manager(db_path=str(test_db_path))
     yield manager
     manager.close()
 
@@ -260,10 +260,11 @@ def isolated_db_manager(test_db_path):
 @pytest.fixture
 def readonly_db_manager():
     """Create a read-only database manager for tests that don't modify data."""
-    from src.infrastructure.core.database import DuckDBManager
+    from src.infrastructure.core.singleton_database import create_db_manager
 
-    manager = DuckDBManager(db_path="data/financial_data.duckdb")
-    # DuckDB read-only mode - doesn't lock the file
+    manager = create_db_manager(db_path="data/financial_data.duckdb")
+    # Set read-only mode to avoid locking issues
+    manager.set_read_only(True)
     yield manager
     manager.close()
 

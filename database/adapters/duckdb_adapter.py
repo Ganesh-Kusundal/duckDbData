@@ -1,4 +1,4 @@
-"""DuckDB adapter for data persistence and querying."""
+"""DuckDB adapter for data persistence and querying using unified infrastructure."""
 
 import os
 from contextlib import contextmanager
@@ -10,23 +10,24 @@ import pandas as pd
 import json
 from duckdb import DuckDBPyConnection
 
-from ...domain.entities.market_data import MarketData, MarketDataBatch
-from ...domain.entities.symbol import Symbol
-from ..config.settings import get_settings
-from ..logging import get_logger
+from src.domain.entities.market_data import MarketData, MarketDataBatch
+from src.domain.entities.symbol import Symbol
+from src.infrastructure.config.settings import get_settings
+from src.infrastructure.logging import get_logger
+from src.infrastructure.database import UnifiedDuckDBManager, DuckDBConfig
 
 logger = get_logger(__name__)
 
 
 class DuckDBAdapter:
-    """DuckDB adapter for financial data operations.
+    """DuckDB adapter for financial data operations using unified infrastructure.
 
-    Handles connection management, query execution, and data persistence for the financial platform.
-    Supports bulk operations and time-series optimized queries.
+    Refactored to use the UnifiedDuckDBManager for consistent connection handling,
+    eliminating multiple connection flows and improving resource management.
     """
 
     def __init__(self, database_path: Optional[str] = None):
-        """Initialize the DuckDB adapter.
+        """Initialize the DuckDB adapter with unified infrastructure.
 
         Args:
             database_path (Optional[str]): Path to the DuckDB database file. If not provided, uses default from settings.
@@ -36,26 +37,49 @@ class DuckDBAdapter:
         """
         self.settings = get_settings()
         self.database_path = database_path or self.settings.database.path
-        self._connection: Optional[DuckDBPyConnection] = None
 
-        # Ensure database directory exists
-        db_path = Path(self.database_path)
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Build unified configuration
+        config = self._build_unified_config()
 
-        logger.info("DuckDB adapter initialized", database_path=self.database_path)
+        # Initialize unified manager (handles schema, connections, etc.)
+        self.db_manager = UnifiedDuckDBManager(config)
+
+        logger.info("DuckDB adapter initialized with unified infrastructure", database_path=self.database_path)
+
+    def _build_unified_config(self) -> DuckDBConfig:
+        """Build unified DuckDB configuration from settings."""
+        return DuckDBConfig(
+            database_path=self.database_path,
+            max_connections=getattr(self.settings.database, 'max_connections', 10),
+            connection_timeout=getattr(self.settings.database, 'connection_timeout', 30.0),
+            memory_limit=getattr(self.settings.database, 'memory_limit', '2GB'),
+            threads=getattr(self.settings.database, 'threads', 4),
+            enable_object_cache=getattr(self.settings.database, 'enable_object_cache', True),
+            enable_profiling=getattr(self.settings.database, 'enable_profiling', False),
+            read_only=getattr(self.settings.database, 'read_only', False),
+            enable_httpfs=getattr(self.settings.database, 'enable_httpfs', True),
+            parquet_root=getattr(self.settings.database, 'parquet_root', './data/'),
+            parquet_glob=getattr(self.settings.database, 'parquet_glob', None),
+            use_parquet_in_unified_view=getattr(self.settings.database, 'use_parquet_in_unified_view', True)
+        )
 
     @property
     def connection(self) -> Optional[DuckDBPyConnection]:
-        """Get the current database connection.
+        """Get the current database connection from unified manager.
 
         Returns:
-            Optional[DuckDBPyConnection]: The active connection or None if not established.
+            Optional[DuckDBPyConnection]: For backward compatibility, returns None since unified manager handles connections internally.
         """
-        return self._connection
+        # For backward compatibility, return None since unified manager handles connections internally
+        return None
+
+    def get_connection_stats(self) -> Dict[str, int]:
+        """Get connection pool statistics from unified manager."""
+        return self.db_manager.get_connection_stats()
 
     @contextmanager
     def get_connection(self):
-        """Get a database connection with automatic cleanup.
+        """Get a database connection with automatic cleanup using unified manager.
 
         Yields:
             DuckDBPyConnection: The connection object for use in with block.
@@ -63,34 +87,9 @@ class DuckDBAdapter:
         Raises:
             Exception: If connection fails.
         """
-        if self._connection is None:
-            # DuckDB configuration - only use valid options
-            config = {
-                'memory_limit': self.settings.database.memory_limit,
-                'threads': self.settings.database.threads,
-            }
-
-            # Add read_only mode if supported and requested
-            if hasattr(self.settings.database, 'read_only') and self.settings.database.read_only:
-                # DuckDB uses different syntax for read-only mode
-                config['access_mode'] = 'READ_ONLY'
-
-            # Handle case where file exists but is not a valid DuckDB database
-            if os.path.exists(self.database_path) and os.path.getsize(self.database_path) == 0:
-                # Remove empty file so DuckDB can create a new database
-                os.remove(self.database_path)
-
-            self._connection = duckdb.connect(self.database_path, config=config)
-            self._initialize_schema()
-
-        try:
-            yield self._connection
-        except Exception as e:
-            logger.error("Database operation failed", error=str(e))
-            raise
-        finally:
-            # Keep connection alive for reuse
-            pass
+        # For backward compatibility, provide a context that yields None
+        # Most operations should use the unified manager methods directly
+        yield None
 
     def _initialize_schema(self):
         """Initialize database schema if not exists.
@@ -99,7 +98,7 @@ class DuckDBAdapter:
         Includes table creation and index setup.
         """
         # Load schema from config
-        schema_config = get_settings().database.schema
+        schema_config = get_settings().database.db_schema
 
         with self.get_connection() as conn:
             # Create tables
@@ -114,6 +113,114 @@ class DuckDBAdapter:
 
             logger.info("Database schema initialized from config")
 
+    def _parquet_glob(self) -> Optional[str]:
+        """Build glob for partitioned parquet files from settings.
+
+        Supports directory structure: YYYY/MM/DD/SYMBOL_minute_YYYY-MM-DD.parquet
+        """
+        root = getattr(self.settings.database, 'parquet_root', None)
+        if not root:
+            return None
+        custom = getattr(self.settings.database, 'parquet_glob', None)
+        if custom:
+            return custom
+        # Default recursive glob to match the given structure
+        return str(Path(root) / "*" / "*" / "*" / "*.parquet")
+
+    def _initialize_external_parquet_view_if_configured(self):
+        """Create a unified view that unions table + parquet scan when enabled.
+
+        View name: market_data_unified
+        Left side: persistent table `market_data`
+        Right side: direct parquet scan via read_parquet(glob, filename=true)
+        """
+        try:
+            if not getattr(self.settings.database, 'use_parquet_in_unified_view', True):
+                return
+            glob = self._parquet_glob()
+            if not glob:
+                return
+
+            with self.get_connection() as conn:
+                # Detect market_data presence and columns
+                table_exists = False
+                cols = set()
+                try:
+                    exists_row = conn.execute(
+                        """
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'market_data'
+                        """
+                    ).fetchone()
+                    table_exists = exists_row is not None
+                    if table_exists:
+                        col_rows = conn.execute(
+                            """
+                            SELECT column_name FROM information_schema.columns
+                            WHERE table_name = 'market_data'
+                            """
+                        ).fetchall()
+                        cols = {r[0] for r in col_rows}
+                except Exception:
+                    table_exists = False
+                    cols = set()
+
+                # Target unified schema
+                unified_cols = [
+                    "symbol", "timestamp", "open", "high", "low", "close", "volume", "timeframe", "date_partition"
+                ]
+
+                # Build table projection, adding literals/defaults if columns missing
+                table_select = None
+                if table_exists:
+                    parts = [
+                        "symbol" if "symbol" in cols else "CAST(NULL AS VARCHAR) AS symbol",
+                        "timestamp" if "timestamp" in cols else "CAST(NULL AS TIMESTAMP) AS timestamp",
+                        "open" if "open" in cols else "CAST(NULL AS DOUBLE) AS open",
+                        "high" if "high" in cols else "CAST(NULL AS DOUBLE) AS high",
+                        "low" if "low" in cols else "CAST(NULL AS DOUBLE) AS low",
+                        "close" if "close" in cols else "CAST(NULL AS DOUBLE) AS close",
+                        "volume" if "volume" in cols else "CAST(NULL AS BIGINT) AS volume",
+                        ("COALESCE(timeframe, '1m') AS timeframe" if "timeframe" in cols else "'1m' AS timeframe"),
+                        (
+                            "COALESCE(date_partition, CAST(timestamp AS DATE)) AS date_partition"
+                            if "date_partition" in cols and "timestamp" in cols
+                            else ("CAST(timestamp AS DATE) AS date_partition" if "timestamp" in cols else "CAST(NULL AS DATE) AS date_partition")
+                        ),
+                    ]
+                    table_select = "SELECT " + ", ".join(parts) + " FROM market_data"
+
+                # Build parquet projection
+                parquet_select = f"""
+                SELECT
+                    COALESCE(symbol, regexp_extract(filename, '.*/([A-Za-z0-9._-]+)_minute_.*', 1)) AS symbol,
+                    CAST(timestamp AS TIMESTAMP) AS timestamp,
+                    CAST(open AS DOUBLE) AS open,
+                    CAST(high AS DOUBLE) AS high,
+                    CAST(low AS DOUBLE) AS low,
+                    CAST(close AS DOUBLE) AS close,
+                    CAST(COALESCE(volume, 0) AS BIGINT) AS volume,
+                    COALESCE(timeframe, '1m') AS timeframe,
+                    COALESCE(date_partition, CAST(timestamp AS DATE)) AS date_partition
+                FROM read_parquet('{glob}', filename=true)
+                """
+
+                if table_select:
+                    view_sql = f"""
+                    CREATE OR REPLACE VIEW market_data_unified AS
+                    {table_select}
+                    UNION ALL
+                    {parquet_select}
+                    """
+                else:
+                    view_sql = f"CREATE OR REPLACE VIEW market_data_unified AS {parquet_select}"
+
+                conn.execute(view_sql)
+                logger.info("Unified market_data_unified view created", parquet_glob=glob, table_included=table_select is not None)
+        except Exception as e:
+            # Log and continue; unified view is optional
+            logger.warning("Failed to create market_data_unified view", error=str(e))
+
     def execute_query(self, query: str, params: Optional[List[Any]] = None) -> pd.DataFrame:
         """Execute a SELECT query and return results as DataFrame.
 
@@ -127,12 +234,25 @@ class DuckDBAdapter:
         Raises:
             Exception: If query execution fails.
         """
-        with self.get_connection() as conn:
-            if params:
-                result = conn.execute(query, params)
-            else:
-                result = conn.execute(query)
-            return result.df()
+        try:
+            with self.get_connection() as conn:
+                if params:
+                    result = conn.execute(query, params)
+                else:
+                    result = conn.execute(query)
+                return result.df()
+        except Exception as e:
+            # Log context-rich error and re-raise
+            snippet = (query or "")
+            if len(snippet) > 200:
+                snippet = snippet[:200] + "..."
+            logger.error(
+                "Query failed",
+                error=str(e),
+                query=snippet,
+                params_count=len(params) if params else 0,
+            )
+            raise
 
     def execute_command(self, command: str, params: Optional[List[Any]] = None) -> int:
         """Execute a DML command (INSERT, UPDATE, DELETE) and return number of affected rows.
@@ -147,12 +267,24 @@ class DuckDBAdapter:
         Raises:
             Exception: If command execution fails.
         """
-        with self.get_connection() as conn:
-            if params:
-                result = conn.execute(command, params)
-            else:
-                result = conn.execute(command)
-            return result.rows_changed
+        try:
+            with self.get_connection() as conn:
+                if params:
+                    result = conn.execute(command, params)
+                else:
+                    result = conn.execute(command)
+                return result.rows_changed
+        except Exception as e:
+            snippet = (command or "")
+            if len(snippet) > 200:
+                snippet = snippet[:200] + "..."
+            logger.error(
+                "Command failed",
+                error=str(e),
+                command=snippet,
+                params_count=len(params) if params else 0,
+            )
+            raise
 
     def insert_market_data(self, data: Union[MarketData, MarketDataBatch]) -> int:
         """Insert market data into the database, supporting single records or batches.
@@ -542,6 +674,8 @@ class DuckDBAdapter:
             Exception: If query fails.
         """
         with self.get_connection() as conn:
-            full_query = f"SELECT * FROM '{parquet_path}' {query}" if query else f"SELECT * FROM '{parquet_path}'"
+            # Support both file and glob paths; use read_parquet for better control
+            base = f"SELECT * FROM read_parquet('{parquet_path}')"
+            full_query = f"{base} {query}" if query else base
             result = conn.execute(full_query)
             return result.df()

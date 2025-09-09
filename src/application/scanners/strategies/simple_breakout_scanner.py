@@ -62,7 +62,7 @@ class SimpleBreakoutScanner(BaseScanner):
                 low as current_low,
                 volume as current_volume,
                 ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition = ?
                 AND timestamp <= ?
                 AND close BETWEEN ? AND ?
@@ -81,7 +81,7 @@ class SimpleBreakoutScanner(BaseScanner):
                 low,
                 close,
                 volume
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition BETWEEN ? AND ?
                 AND symbol IN (SELECT symbol FROM latest_prices)
         ),

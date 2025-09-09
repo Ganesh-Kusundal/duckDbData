@@ -1,0 +1,4 @@
+symbol,breakout_price,current_high,current_low,current_volume,breakout_pct,volume_ratio,probability_score,entry_price,stop_loss,take_profit,performance_rank,signal_type,rule_id
+AAPL,150.25,151.7525,148.7475,2500000,1.0,1.5,80.0,150.25,146.49375,156.26000000000002,80.0,BUY,breakout-conservative
+AAPL,150.25,151.7525,148.7475,2500000,1.0,1.5,80.0,150.25,147.99625,162.27,80.0,BUY,breakout-aggressive
+AAPL,150.25,151.7525,148.7475,2500000,1.0,1.5,80.0,150.25,147.245,159.26500000000001,80.0,BUY,breakout-standard

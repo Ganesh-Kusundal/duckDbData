@@ -23,7 +23,7 @@ import logging
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from broker import get_broker
-from src.infrastructure.core.database.database import DuckDBManager
+from src.infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
 
 # Configure logging
 logging.basicConfig(
@@ -43,7 +43,7 @@ class TodayIntradaySync:
         Args:
             db_path: Path to DuckDB database file
         """
-        self.db_manager = DuckDBManager(db_path=db_path)
+        self.db_manager = create_db_manager(db_path=db_path)
         self.broker = None
         self.today = datetime.date.today()
 

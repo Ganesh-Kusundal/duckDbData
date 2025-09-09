@@ -23,20 +23,36 @@ A **production-grade, event-driven financial data platform** built with **Domain
 
 ### Core Design Patterns
 - **Domain-Driven Design (DDD)**: domain → application → infrastructure/adapters → interface
+- **Ports & Adapters (Hexagonal Architecture)**: Clean separation with dependency inversion
+- **Dependency Injection**: Composition root pattern for loose coupling
 - **Event-Driven Architecture**: RxPy-based event bus for decoupling
 - **Plugin System**: Entry points for hot-swappable scanners and brokers
 - **Data Contracts**: Great Expectations for quality validation
 - **Configuration as Code**: Pydantic-settings with environment overlays
+
+### SOLID Principles Implementation
+- **Single Responsibility**: Each class has one clear purpose
+- **Open/Closed**: Extension through plugins and adapters without modification
+- **Liskov Substitution**: Compatible implementations through ports/interfaces
+- **Interface Segregation**: Clean port interfaces for specific use cases
+- **Dependency Inversion**: Dependencies on abstractions, not concretions
 
 ### Data Management
 - **Canonical Store**: Parquet files for immutable data
 - **Query/Compute Layer**: DuckDB for analytics
 - **Versioned Snapshots**: Data versioning and reproducibility
 
-### Observability
-- **Structured Logging**: structlog for consistent log format
-- **Metrics**: OpenTelemetry + Prometheus integration
-- **Health Checks**: Comprehensive system monitoring
+### Ports & Adapters Pattern
+- **Clean Architecture**: Domain depends only on ports/interfaces
+- **Dependency Inversion**: High-level modules don't depend on low-level modules
+- **Testability**: Easy mocking through port interfaces
+- **Framework Independence**: Domain logic isolated from external frameworks
+
+### Dependency Injection
+- **Composition Root**: `src/app/startup.py` provides factory functions
+- **Constructor Injection**: Dependencies passed through constructors
+- **Late Binding**: Dependencies resolved at runtime
+- **Configuration-Driven**: DI patterns configurable through settings
 
 ## Target Architecture
 
@@ -55,6 +71,213 @@ duckdb_financial_infra/
 │   │   ├── adapters/                # External service adapters
 │   │   └── repositories/            # Repository implementations
 │   └── interfaces/                  # UI/API/CLI entry points
+
+## 🆕 Ports & Adapters (Hexagonal Architecture) Implementation
+
+### Port Interfaces (src/application/ports/)
+```
+ports/
+├── scanner_read_port.py         # Scanner data reading abstraction
+├── market_read_port.py          # Market data reading abstraction
+└── event_bus_port.py            # Event publishing abstraction
+```
+
+### Adapter Implementations (src/infrastructure/adapters/)
+```
+adapters/
+├── scanner_read_adapter.py      # DuckDB implementation of ScannerReadPort
+├── market_read_adapter.py       # DuckDB implementation of MarketReadPort
+└── event_bus_adapter.py         # RxPy implementation of EventBusPort
+```
+
+### Dependency Injection Pattern
+
+#### 1. Composition Root (`src/app/startup.py`)
+```python
+def get_scanner(name: str, db_path: Optional[str] = None):
+    """Create scanner with injected dependencies."""
+    from src.infrastructure.adapters.scanner_read_adapter import DuckDBScannerReadAdapter
+
+    settings = get_settings()
+    scanner_read_port = DuckDBScannerReadAdapter(database_path=db_path or settings.database.path)
+
+    if name == 'crp':
+        from src.application.scanners.strategies.crp_scanner import CRPScanner
+        return CRPScanner(scanner_read_port=scanner_read_port)
+    # ... other scanners
+
+def get_market_read_port(db_path: Optional[str] = None):
+    """Factory for MarketReadPort implementations."""
+    from src.infrastructure.adapters.market_read_adapter import DuckDBMarketReadAdapter
+    settings = get_settings()
+    return DuckDBMarketReadAdapter(database_path=db_path or settings.database.path)
+```
+
+#### 2. Constructor Injection in Domain/Application
+```python
+class CRPScanner(BaseScanner):
+    def __init__(self, scanner_read_port: ScannerReadPort):
+        self.scanner_read = scanner_read_port  # Injected dependency
+
+    def _scan_single_day_crp(self, scan_date, cutoff_time):
+        results = self.scanner_read.get_crp_candidates(
+            scan_date=scan_date,
+            cutoff_time=cutoff_time,
+            config=self.config
+        )
+        return results
+```
+
+#### 3. CLI Entry Points (Proper DI)
+```python
+# TwoPhaseIntradayRunner CLI
+def main():
+    # CLI entry point imports infrastructure and injects dependencies
+    from src.infrastructure.adapters.market_read_adapter import DuckDBMarketReadAdapter
+
+    runner = TwoPhaseIntradayRunner()
+    market_read_port = DuckDBMarketReadAdapter(database_path=args.db_path)
+    runner.initialize_database(market_read_port)  # Inject dependency
+
+    runner.run_daily_flow()  # Domain logic runs with injected deps
+```
+
+### Port Interface Examples
+
+#### ScannerReadPort
+```python
+class ScannerReadPort(Protocol):
+    def get_crp_candidates(self, scan_date, cutoff_time, config, max_results) -> List[Dict]:
+        """Read CRP candidate data from storage."""
+
+    def get_end_of_day_prices(self, symbols, scan_date, end_time) -> Dict[str, Dict]:
+        """Read end-of-day prices for symbols."""
+
+    def get_breakout_candidates(self, scan_date, cutoff_time, config, max_results) -> List[Dict]:
+        """Read breakout candidate data from storage."""
+```
+
+#### DuckDB Adapter Implementation
+```python
+class DuckDBScannerReadAdapter(ScannerReadPort):
+    def __init__(self, database_path: str):
+        self._db_path = database_path
+        self._conn = None
+        self._logger = get_logger(__name__)
+
+    def get_crp_candidates(self, scan_date, cutoff_time, config, max_results):
+        try:
+            conn = self._conn_or_open()
+            # Complex SQL query with proper error handling
+            rows = conn.execute(query, params).fetchall()
+            return self._process_results(rows)
+        except Exception as e:
+            self._log_db_error("get_crp_candidates", query, params, e)
+            raise
+```
+
+### Benefits of Ports & Adapters Implementation
+
+#### 1. **Clean Separation of Concerns**
+- Domain logic depends only on abstractions (ports)
+- Infrastructure implementations can be swapped without affecting domain
+- Business rules isolated from external dependencies
+
+#### 2. **Enhanced Testability**
+```python
+def test_crp_scanner_with_mock_port():
+    # Easy to test with mock implementations
+    mock_port = FakeScannerReadAdapter()
+    scanner = CRPScanner(scanner_read_port=mock_port)
+
+    results = scanner.scan_date_range(start_date, end_date)
+    assert len(results) > 0
+```
+
+#### 3. **Framework Independence**
+- Domain doesn't import DuckDB, FastAPI, or other frameworks
+- Can switch to PostgreSQL, MongoDB, or other storage without domain changes
+- Framework upgrades don't affect business logic
+
+#### 4. **Runtime Flexibility**
+- Different adapter implementations for different environments
+- Configuration-driven adapter selection
+- Plugin-based adapter extensions
+
+### Architecture Guardrails
+
+#### Import Rules Enforcement
+```python
+def test_domain_does_not_import_infrastructure():
+    """Ensure domain layer maintains clean separation."""
+    domain_files = list_py_files_under("src/domain/")
+    violations = []
+    for f in domain_files:
+        if "from src.infrastructure" in text or "import src.infrastructure" in text:
+            violations.append(f)
+    assert not violations, f"Domain imports infrastructure: {violations}"
+```
+
+#### Contract Testing
+```python
+def test_scanner_read_port_contract():
+    """Test all adapters implement ScannerReadPort correctly."""
+    duckdb_adapter = DuckDBScannerReadAdapter()
+    fake_adapter = FakeScannerReadAdapter()
+
+    # Both must implement the same interface
+    assert hasattr(duckdb_adapter, 'get_crp_candidates')
+    assert hasattr(fake_adapter, 'get_crp_candidates')
+
+    # Return types must match
+    result = duckdb_adapter.get_crp_candidates(date.today(), time(9,50), {}, 5)
+    assert isinstance(result, list)
+```
+
+### Migration Strategy for Ports & Adapters
+
+#### Phase 1: Port Definition ✅ COMPLETED
+- Define port interfaces in `src/application/ports/`
+- Ensure ports are clean abstractions without implementation details
+
+#### Phase 2: Adapter Implementation ✅ COMPLETED
+- Implement adapters in `src/infrastructure/adapters/`
+- Ensure adapters fully implement port interfaces
+- Add comprehensive error handling and logging
+
+#### Phase 3: Dependency Injection ✅ COMPLETED
+- Implement composition root in `src/app/startup.py`
+- Update CLI entry points to inject dependencies
+- Update scanner factory for proper port injection
+
+#### Phase 4: Domain Refactoring ✅ COMPLETED
+- Remove direct infrastructure imports from domain
+- Update constructors to accept port dependencies
+- Ensure domain depends only on abstractions
+
+#### Phase 5: Testing & Validation ✅ COMPLETED
+- Add contract tests for port implementations
+- Add smoke tests for API endpoints
+- Verify architecture guardrails are enforced
+- Ensure no regressions in existing functionality
+
+### Success Metrics
+
+- ✅ **Clean Architecture**: Domain depends only on ports
+- ✅ **Testability**: Easy mocking through port interfaces
+- ✅ **Maintainability**: Loose coupling between layers
+- ✅ **Extensibility**: New adapters without domain changes
+- ✅ **Reliability**: Comprehensive error handling in adapters
+- ✅ **Performance**: Efficient database operations with logging
+
+This Ports & Adapters implementation provides a **solid foundation** for maintainable, testable, and extensible software architecture following **Domain-Driven Design principles**.
+├── app/
+│   └── startup.py              # 🆕 Composition root for DI
+└── application/
+    └── ports/                  # 🆕 Port interfaces
+        ├── scanner_read_port.py
+        ├── market_read_port.py
+        └── event_bus_port.py
 ├── data/                            # Data storage & management
 │   ├── financial_data.duckdb        # DuckDB database (67M+ records)
 │   └── technical_indicators/        # Pre-computed indicators

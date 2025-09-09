@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}All Rules{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="fas fa-list"></i> All Rules</h2>
+                <p class="text-muted">Manage and monitor your trading rules</p>
+            </div>
+            <a href="{{ url_for('create_rule') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Create New Rule
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" class="row g-3">
+                    <div class="col-md-4">
+                        <label for="type" class="form-label">Rule Type</label>
+                        <select class="form-select" id="type" name="type">
+                            <option value="all" {{ 'selected' if current_type == 'all' else '' }}>All Types</option>
+                            <option value="breakout" {{ 'selected' if current_type == 'breakout' else '' }}>Breakout</option>
+                            <option value="crp" {{ 'selected' if current_type == 'crp' else '' }}>CRP</option>
+                            <option value="technical" {{ 'selected' if current_type == 'technical' else '' }}>Technical</option>
+                            <option value="volume" {{ 'selected' if current_type == 'volume' else '' }}>Volume</option>
+                            <option value="momentum" {{ 'selected' if current_type == 'momentum' else '' }}>Momentum</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="all" {{ 'selected' if current_status == 'all' else '' }}>All Status</option>
+                            <option value="enabled" {{ 'selected' if current_status == 'enabled' else '' }}>Active</option>
+                            <option value="disabled" {{ 'selected' if current_status == 'disabled' else '' }}>Disabled</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">&nbsp;</label>
+                        <div>
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="fas fa-filter"></i> Apply Filters
+                            </button>
+                            <a href="{{ url_for('list_rules') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i> Clear
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rules Table -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-table"></i> Rules ({{ rules|length }})</h5>
+                <div>
+                    <a href="{{ url_for('validate_rules') }}" class="btn btn-sm btn-outline-info">
+                        <i class="fas fa-check-circle"></i> Validate All
+                    </a>
+                    <a href="{{ url_for('deploy_rules') }}" class="btn btn-sm btn-outline-success">
+                        <i class="fas fa-rocket"></i> Deploy
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if rules %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th><input type="checkbox" id="selectAll"></th>
+                                <th>Rule ID</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Priority</th>
+                                <th>Version</th>
+                                <th>Last Modified</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rule in rules %}
+                            <tr class="rule-type-{{ rule.rule_type }}">
+                                <td><input type="checkbox" class="rule-checkbox" value="{{ rule.rule_id }}"></td>
+                                <td>
+                                    <code class="text-truncate" style="max-width: 150px;" title="{{ rule.rule_id }}">
+                                        {{ rule.rule_id }}
+                                    </code>
+                                </td>
+                                <td>{{ rule.name }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'primary' if rule.rule_type == 'breakout' else 'secondary' if rule.rule_type == 'crp' else 'info' }}">
+                                        {{ rule.rule_type.title() }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if rule.enabled else 'secondary' }}">
+                                        <i class="fas fa-{{ 'play' if rule.enabled else 'pause' }}"></i>
+                                        {{ 'Active' if rule.enabled else 'Disabled' }}
+                                    </span>
+                                </td>
+                                <td>{{ rule.priority or 50 }}</td>
+                                <td>{{ rule.metadata.version if rule.metadata and rule.metadata.version else '1.0.0' }}</td>
+                                <td>
+                                    {% if rule.metadata and rule.metadata.updated_at %}
+                                        {{ rule.metadata.updated_at[:10] }}
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('view_rule', rule_id=rule.rule_id) }}"
+                                           class="btn btn-outline-primary" title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <a href="{{ url_for('edit_rule', rule_id=rule.rule_id) }}"
+                                           class="btn btn-outline-warning" title="Edit Rule">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-outline-danger"
+                                                onclick="confirmDelete('{{ rule.rule_id }}', '{{ rule.name }}')"
+                                                title="Delete Rule">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Bulk Actions -->
+                <div class="mt-3 d-none" id="bulkActions">
+                    <div class="alert alert-info">
+                        <strong>{{ selected_rules|length if selected_rules else 0 }} rules selected</strong>
+                        <div class="float-end">
+                            <button class="btn btn-sm btn-outline-success">
+                                <i class="fas fa-check-circle"></i> Validate Selected
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-rocket"></i> Deploy Selected
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-times"></i> Clear Selection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+                    <h4 class="text-muted">No Rules Found</h4>
+                    <p class="text-muted">No rules match your current filters.</p>
+                    <a href="{{ url_for('create_rule') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Your First Rule
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the rule <strong id="deleteRuleName"></strong>?</p>
+                <p class="text-danger">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Delete Rule</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete(ruleId, ruleName) {
+    document.getElementById('deleteRuleName').textContent = ruleName;
+    document.getElementById('deleteForm').action = '{{ url_for("delete_rule", rule_id="") }}' + ruleId;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+// Handle checkbox selection
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const ruleCheckboxes = document.querySelectorAll('.rule-checkbox');
+    const bulkActions = document.getElementById('bulkActions');
+
+    function updateBulkActions() {
+        const checkedBoxes = document.querySelectorAll('.rule-checkbox:checked');
+        if (checkedBoxes.length > 0) {
+            bulkActions.classList.remove('d-none');
+        } else {
+            bulkActions.classList.add('d-none');
+        }
+    }
+
+    selectAllCheckbox.addEventListener('change', function() {
+        ruleCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateBulkActions();
+    });
+
+    ruleCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkActions);
+    });
+});
+</script>
+{% endblock %}

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 import asyncio
 
-from ...infrastructure.messaging.event_bus import EventBus
+from ...application.ports.event_bus_port import EventBusPort
 from ...infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -86,7 +86,7 @@ class NotificationService:
     a unified interface for sending alerts and messages.
     """
 
-    def __init__(self, event_bus: EventBus):
+    def __init__(self, event_bus: EventBusPort):
         """
         Initialize the notification service.
 

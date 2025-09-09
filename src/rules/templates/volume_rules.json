@@ -1,0 +1,103 @@
+[
+  {
+    "rule_id": "volume-spike-2x",
+    "name": "Volume Spike Scanner (2x)",
+    "description": "Identifies volume spikes with 2x multiplier for potential breakouts",
+    "rule_type": "volume",
+    "enabled": true,
+    "priority": 35,
+    "conditions": {
+      "time_window": {
+        "start": "09:35",
+        "end": "10:30"
+      },
+      "volume_conditions": {
+        "min_volume": 100000,
+        "volume_trend": "increasing",
+        "relative_volume": 2.0
+      },
+      "market_conditions": {
+        "min_price": 50,
+        "max_price": 2000
+      }
+    },
+    "actions": {
+      "signal_type": "BUY",
+      "confidence_calculation": "weighted_average",
+      "risk_management": {
+        "stop_loss_pct": 0.025,
+        "take_profit_pct": 0.075,
+        "max_position_size_pct": 8
+      }
+    },
+    "metadata": {
+      "author": "rule_generator",
+      "created_at": "2025-09-08T22:00:00Z",
+      "version": "1.0.0",
+      "tags": ["volume", "momentum", "breakout"],
+      "performance_expectations": {
+        "expected_win_rate": 0.60,
+        "expected_profit_factor": 1.5
+      },
+      "risk_assessment": {
+        "risk_level": "medium",
+        "market_conditions": "volatile",
+        "liquidity_requirements": "high",
+        "holding_period": "intraday"
+      }
+    }
+  },
+  {
+    "rule_id": "volume-accumulation",
+    "name": "Volume Accumulation Scanner",
+    "description": "Identifies accumulation patterns with increasing volume trend",
+    "rule_type": "volume",
+    "enabled": true,
+    "priority": 30,
+    "conditions": {
+      "time_window": {
+        "start": "09:30",
+        "end": "15:30"
+      },
+      "volume_conditions": {
+        "min_volume": 200000,
+        "volume_trend": "increasing",
+        "relative_volume": 1.8,
+        "accumulation_distribution": true
+      },
+      "market_conditions": {
+        "min_price": 100,
+        "max_price": 5000
+      }
+    },
+    "actions": {
+      "signal_type": "BUY",
+      "confidence_calculation": "weighted_average",
+      "risk_management": {
+        "stop_loss_pct": 0.02,
+        "take_profit_pct": 0.06,
+        "max_position_size_pct": 10
+      },
+      "alert_settings": {
+        "email_notification": true,
+        "alert_threshold": 0.8
+      }
+    },
+    "metadata": {
+      "author": "rule_generator",
+      "created_at": "2025-09-08T22:00:00Z",
+      "version": "1.0.0",
+      "tags": ["volume", "accumulation", "trend"],
+      "performance_expectations": {
+        "expected_win_rate": 0.65,
+        "expected_profit_factor": 1.7
+      },
+      "risk_assessment": {
+        "risk_level": "low",
+        "market_conditions": "sideways",
+        "liquidity_requirements": "high",
+        "holding_period": "swing"
+      }
+    }
+  }
+]

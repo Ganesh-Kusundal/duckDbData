@@ -35,7 +35,7 @@ def test_scanner_with_isolated_database(isolated_db_manager, mock_scanner):
     assert not results.empty
 
     # Check required columns exist
-    required_columns = ['symbol', 'current_price', 'breakout_score']
+    required_columns = ['symbol', 'current_price', 'probability_score']
     for col in required_columns:
         assert col in results.columns
 
@@ -62,7 +62,7 @@ def test_scanner_readonly_mode(readonly_db_manager):
 
 def test_database_isolation(isolated_db_manager):
     """Test that isolated databases don't interfere with each other."""
-    from src.infrastructure.core.database import DuckDBManager
+    from src.infrastructure.core.singleton_database import create_db_manager
 
     # Create two separate database instances
     db1_path = isolated_db_manager.db_path
@@ -72,7 +72,7 @@ def test_database_isolation(isolated_db_manager):
     import shutil
     shutil.copy2(db1_path, db2_path)
 
-    db2 = DuckDBManager(db_path=db2_path)
+    db2 = create_db_manager(db_path=db2_path)
 
     # Both should work independently
     assert db1_path != db2_path

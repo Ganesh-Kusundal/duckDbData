@@ -1,0 +1,48 @@
+{
+  "generated_at": "2025-09-08T22:51:10.983882",
+  "analysis_period_days": 1,
+  "performance_trends": {
+    "system_trends": [],
+    "rule_trends": [],
+    "analysis_period": "1 days",
+    "generated_at": "2025-09-08T22:51:10.986151"
+  },
+  "insights": [
+    {
+      "insight_type": "info",
+      "title": "System Performance Stable",
+      "description": "No significant performance trends detected in the analyzed period",
+      "impact_level": "low",
+      "affected_components": [
+        "system_overall"
+      ],
+      "recommended_actions": [
+        "Continue regular performance monitoring",
+        "Maintain current optimization practices",
+        "Keep performance baselines updated"
+      ]
+    }
+  ],
+  "comparative_analysis": {
+    "baseline_period": "30 days",
+    "comparison_period": "7 days",
+    "generated_at": "2025-09-08T22:51:10.993266",
+    "comparisons": {}
+  },
+  "summary_statistics": {
+    "system_stats": {
+      "avg_cpu": null,
+      "max_cpu": null,
+      "avg_memory": null,
+      "max_memory": null,
+      "data_points": 0
+    },
+    "rule_stats": {
+      "unique_rules": 5,
+      "total_executions": 10,
+      "avg_execution_time": 1.3599999999999999,
+      "overall_success_rate": 80.0
+    },
+    "analysis_period_days": 1
+  }
+}

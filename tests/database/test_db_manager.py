@@ -26,7 +26,7 @@ def test_db_manager_constructor():
 
     try:
         # Import the classes
-        from src.infrastructure.core.database import DuckDBManager
+        from src.infrastructure.core.singleton_database import create_db_manager
         from src.infrastructure.config.settings import get_settings
         print("✅ Imports successful")
 
@@ -35,10 +35,10 @@ def test_db_manager_constructor():
         print(f"✅ Settings loaded, database path: {settings.database.path}")
 
         # Test constructor with correct parameter name
-        db_manager = DuckDBManager(
+        db_manager = create_db_manager(
             db_path=settings.database.path
         )
-        print("✅ DuckDBManager constructor works with 'db_path' parameter")
+        print("✅ DuckDBConnectionManager works with 'db_path' parameter")
 
         # Test that we can connect (optional, might fail if database doesn't exist)
         try:

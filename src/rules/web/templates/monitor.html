@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Monitor Rules{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2><i class="fas fa-chart-line"></i> Rule Performance Monitor</h2>
+        <p class="text-muted">Monitor the performance and health of your trading rules</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-success">87.3%</h5>
+                <p class="card-text">Average Win Rate</p>
+                <i class="fas fa-trophy fa-2x text-success"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-info">1.95</h5>
+                <p class="card-text">Avg Profit Factor</p>
+                <i class="fas fa-coins fa-2x text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-primary">342</h5>
+                <p class="card-text">Total Signals</p>
+                <i class="fas fa-signal fa-2x text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-warning">7</h5>
+                <p class="card-text">Active Rules</p>
+                <i class="fas fa-play-circle fa-2x text-warning"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> Rule Performance Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Rule ID</th>
+                                <th>Type</th>
+                                <th>Signals</th>
+                                <th>Win Rate</th>
+                                <th>Avg Profit</th>
+                                <th>Avg Loss</th>
+                                <th>Profit Factor</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rule_id, data in performance.items() %}
+                            <tr>
+                                <td><code>{{ rule_id }}</code></td>
+                                <td>
+                                    <span class="badge bg-{{ 'primary' if 'breakout' in rule_id else 'secondary' }}">
+                                        {{ 'Breakout' if 'breakout' in rule_id else 'CRP' if 'crp' in rule_id else 'Other' }}
+                                    </span>
+                                </td>
+                                <td>{{ data.total_signals }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if data.win_rate >= 70 else 'warning' if data.win_rate >= 50 else 'danger' }}">
+                                        {{ "%.1f"|format(data.win_rate) }}%
+                                    </span>
+                                </td>
+                                <td class="text-success">+₹{{ "%.2f"|format(data.avg_profit) }}</td>
+                                <td class="text-danger">-₹{{ "%.2f"|format(data.avg_loss) }}</td>
+                                <td>
+                                    <strong class="{{ 'text-success' if data.profit_factor >= 1.5 else 'text-warning' if data.profit_factor >= 1.0 else 'text-danger' }}">
+                                        {{ "%.2f"|format(data.profit_factor) }}
+                                    </strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-circle"></i> Active
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-tachometer-alt"></i> System Health</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Rule Engine</span>
+                        <span class="badge bg-success">Healthy</span>
+                    </div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-success" style="width: 95%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Database</span>
+                        <span class="badge bg-success">Connected</span>
+                    </div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-success" style="width: 100%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Validation Engine</span>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-success" style="width: 92%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Signal Processing</span>
+                        <span class="badge bg-warning">Moderate Load</span>
+                    </div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-warning" style="width: 78%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-exclamation-triangle"></i> Alerts</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                    <strong>Performance Alert:</strong> Rule 'breakout-aggressive' has lower than expected win rate
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+
+                <div class="alert alert-info alert-dismissible fade show" role="alert">
+                    <strong>Info:</strong> All rules validated successfully in last check
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <strong>Success:</strong> New rule 'crp-conservative' deployed to production
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-history"></i> Recent Performance History</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="performanceChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Performance History Chart
+    const ctx = document.getElementById('performanceChart').getContext('2d');
+
+    const performanceData = {
+        labels: ['Day -7', 'Day -6', 'Day -5', 'Day -4', 'Day -3', 'Day -2', 'Day -1'],
+        datasets: [{
+            label: 'Win Rate %',
+            data: [85.2, 87.1, 83.4, 89.2, 86.7, 88.1, 87.3],
+            borderColor: '#28a745',
+            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+            tension: 0.4
+        }, {
+            label: 'Total Signals',
+            data: [45, 52, 38, 61, 47, 55, 44],
+            borderColor: '#007bff',
+            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+            tension: 0.4,
+            yAxisID: 'y1'
+        }]
+    };
+
+    new Chart(ctx, {
+        type: 'line',
+        data: performanceData,
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Win Rate %'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Signals Count'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                },
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

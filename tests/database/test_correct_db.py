@@ -26,7 +26,7 @@ def test_correct_database():
 
     try:
         # Import the classes
-        from src.infrastructure.core.database import DuckDBManager
+        from src.infrastructure.core.singleton_database import create_db_manager
         print("✅ Imports successful")
 
         # Use the main database path
@@ -35,8 +35,8 @@ def test_correct_database():
         print(f"📊 Database size: {main_db_path.stat().st_size:,} bytes")
 
         # Initialize database manager
-        db_manager = DuckDBManager(db_path=str(main_db_path))
-        print("✅ DuckDBManager initialized")
+        db_manager = create_db_manager(db_path=str(main_db_path))
+        print("✅ DuckDBConnectionManager initialized")
 
         # Test basic query
         print("🔍 Testing market_data table...")

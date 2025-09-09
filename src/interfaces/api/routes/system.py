@@ -9,6 +9,7 @@ from typing import Dict, Any
 from fastapi import APIRouter
 
 from ....infrastructure.logging import get_logger
+from ....infrastructure.config.settings import get_settings
 
 logger = get_logger(__name__)
 
@@ -48,8 +49,9 @@ async def get_system_config() -> Dict[str, Any]:
     # TODO: Implement actual config retrieval
     logger.info("Getting system configuration")
 
+    settings = get_settings()
     return {
-        "database_path": "data/financial_data.duckdb",
+        "database_path": settings.database.path,
         "log_level": "INFO",
         "max_workers": 4
     }

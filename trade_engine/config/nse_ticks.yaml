@@ -1,0 +1,42 @@
+# NSE Tick Size and Price Band Configuration
+# ===========================================
+#
+# NSE uses variable tick sizes based on price bands
+# This ensures orders are placed at valid price levels
+
+# Price bands and corresponding tick sizes for NSE cash market
+tick_sizes:
+  # Price Range -> Tick Size (in rupees)
+  "0-10": 0.05
+  "10-25": 0.10
+  "25-100": 0.25
+  "100-200": 0.50
+  "200-500": 1.00
+  "500+": 1.00
+
+# Price bands for different symbols
+price_bands:
+  # Default for most stocks
+  default:
+    lower_limit_pct: -10.0  # Max 10% down from previous close
+    upper_limit_pct: 10.0   # Max 10% up from previous close
+
+  # Special bands for certain stocks (can be extended)
+  special_bands: {}
+
+# Lot sizes for different symbols (minimum quantity)
+lot_sizes:
+  default: 1  # Most stocks trade in lots of 1
+
+# Fee structure for backtesting
+fees:
+  brokerage_per_trade: 0.0003  # 0.03% per trade
+  stt: 0.00025                 # 0.025% STT on sell
+  transaction_charges: 0.0000325  # 0.00325% NSE charges
+  gst: 0.18                     # 18% GST on brokerage
+  sebi_charges: 0.0000005       # 0.00005% SEBI charges
+
+# Rounding rules
+rounding:
+  price: nearest_tick
+  quantity: integer  # Must be whole number

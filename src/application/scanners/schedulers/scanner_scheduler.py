@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Optional
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ..daily_intraday_scanner import DailyIntradayScanner
-from src.infrastructure.core.database import DuckDBManager
+from src.infrastructure.singleton_database import DuckDBConnectionManager, create_db_manager
 
 
 class ScannerScheduler:
@@ -27,9 +27,9 @@ class ScannerScheduler:
     Runs on trading days at exactly 09:50 AM IST.
     """
 
-    def __init__(self, db_manager: DuckDBManager = None):
+    def __init__(self, db_manager: DuckDBConnectionManager = None):
         """Initialize the scanner scheduler."""
-        self.db_manager = db_manager or DuckDBManager()
+        self.db_manager = db_manager or create_db_manager()
         self.scanner = DailyIntradayScanner(self.db_manager)
 
         # Setup logging

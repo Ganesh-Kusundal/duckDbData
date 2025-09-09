@@ -1,0 +1,63 @@
+{
+  "generated_at": "2025-09-08T22:51:10.982242",
+  "period_days": 1,
+  "system_performance": {
+    "avg_cpu_percent": 0.0,
+    "avg_memory_percent": 0.0,
+    "peak_memory_mb": 0.0,
+    "avg_disk_usage": 0.0,
+    "avg_network_connections": 0,
+    "avg_active_threads": 0,
+    "data_points": 0
+  },
+  "rule_performance": {
+    "breakout-aggressive": {
+      "rule_id": "breakout-aggressive",
+      "total_executions": 2,
+      "success_rate": 0.0,
+      "avg_execution_time": 0.8,
+      "avg_signals_per_execution": 1.0,
+      "total_signals": 2
+    },
+    "breakout-conservative": {
+      "rule_id": "breakout-conservative",
+      "total_executions": 2,
+      "success_rate": 1.0,
+      "avg_execution_time": 0.9,
+      "avg_signals_per_execution": 1.0,
+      "total_signals": 2
+    },
+    "breakout-standard": {
+      "rule_id": "breakout-standard",
+      "total_executions": 2,
+      "success_rate": 1.0,
+      "avg_execution_time": 1.2,
+      "avg_signals_per_execution": 3.0,
+      "total_signals": 6
+    },
+    "crp-high-probability": {
+      "rule_id": "crp-high-probability",
+      "total_executions": 2,
+      "success_rate": 1.0,
+      "avg_execution_time": 2.1,
+      "avg_signals_per_execution": 4.0,
+      "total_signals": 8
+    },
+    "crp-standard": {
+      "rule_id": "crp-standard",
+      "total_executions": 2,
+      "success_rate": 1.0,
+      "avg_execution_time": 1.8,
+      "avg_signals_per_execution": 2.0,
+      "total_signals": 4
+    }
+  },
+  "recent_alerts": [],
+  "summary": {
+    "total_rules": 5,
+    "total_executions": 10,
+    "avg_success_rate": 0.8,
+    "avg_execution_time": 1.3599999999999999,
+    "total_signals_generated": 22
+  }
+}

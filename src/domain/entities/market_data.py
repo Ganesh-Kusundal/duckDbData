@@ -41,16 +41,16 @@ class MarketData:
 
     symbol: str
     timestamp: datetime
-    timeframe: str
     ohlcv: OHLCV
     date_partition: str
+    timeframe: Optional[str] = None  # Optional to align with database schema
 
     def __post_init__(self):
         """Validate entity after initialization."""
         if not self.symbol:
             raise ValueError("Symbol cannot be empty")
-        if not self.timeframe:
-            raise ValueError("Timeframe cannot be empty")
+        if self.timeframe is not None and not self.timeframe:  # Only validate if provided
+            raise ValueError("Timeframe cannot be empty if provided")
         if not self.date_partition:
             raise ValueError("Date partition cannot be empty")
 
@@ -60,7 +60,7 @@ class MarketData:
         return bool(
             self.symbol and
             self.timestamp and
-            self.timeframe and
+            (self.timeframe is None or self.timeframe) and  # Valid if None or truthy
             self.ohlcv and
             self.date_partition
         )
@@ -71,17 +71,17 @@ class MarketDataBatch:
     """Batch of market data for efficient processing."""
 
     symbol: str
-    timeframe: str
     data: list[MarketData]
     start_date: datetime
     end_date: datetime
+    timeframe: Optional[str] = None  # Optional to align with database schema
 
     def __post_init__(self):
         """Validate batch after initialization."""
         if not self.symbol:
             raise ValueError("Symbol cannot be empty")
-        if not self.timeframe:
-            raise ValueError("Timeframe cannot be empty")
+        if self.timeframe is not None and not self.timeframe:  # Only validate if provided
+            raise ValueError("Timeframe cannot be empty if provided")
         if not self.data:
             raise ValueError("Data cannot be empty")
         if self.start_date > self.end_date:

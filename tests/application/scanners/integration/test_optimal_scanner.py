@@ -25,16 +25,16 @@ if str(project_root / 'src') not in sys.path:
 
 from src.infrastructure.logging import setup_logging
 from src.application.scanners.strategies.breakout_scanner import BreakoutScanner
-from src.infrastructure.core.database import DuckDBManager
+from src.infrastructure.core.singleton_database import create_db_manager
 from src.infrastructure.config.settings import get_settings
 
 # Setup
 setup_logging()
 settings = get_settings()
 
-# Initialize with optimal database
-db_manager = DuckDBManager(db_path=str(project_root / "data" / "financial_data.duckdb"))
-db_manager.create_schema()
+# Initialize with optimal database (read-only mode to avoid locking)
+db_manager = create_db_manager(db_path=str(project_root / "data" / "financial_data.duckdb"))
+db_manager.set_read_only(True)  # Avoid locking issues
 
 # Initialize scanner with relaxed config
 scanner = BreakoutScanner(db_manager=db_manager)
@@ -51,11 +51,19 @@ cutoff_time = time(9, 50)
 
 results = scanner.scan(test_date, cutoff_time)
 
-if not results.empty:
+if hasattr(results, 'empty') and not results.empty:
     print(f"\n✅ Success! Found {len(results)} breakout candidates")
     print("\n📈 Top results:")
-    display_cols = ['symbol', 'current_price', 'breakout_score', 'breakout_pct', 'volume_ratio']
-    print(results[display_cols].head(10).to_string(index=False))
+
+    # Display top 10 results from DataFrame
+    for i, (_, row) in enumerate(results.head(10).iterrows()):
+        symbol = row.get('symbol', 'N/A')
+        current_price = row.get('current_price', row.get('breakout_price', 0))
+        probability_score = row.get('probability_score', 0)
+        price_change_pct = row.get('price_change_pct', 0)
+        volume_ratio = row.get('volume_ratio', row.get('volume_multiplier', 0))
+
+        print(f"{i+1:2d}. {symbol:<10} Price:₹{current_price:>8.2f} Score:{probability_score:>5.1f}% Change:{price_change_pct:>+6.2f}% Vol:{volume_ratio:>4.1f}x")
 
     # Save results
     results.to_csv('optimal_scanner_results.csv', index=False)

@@ -126,7 +126,7 @@ class QueryAPI:
                 LAST(close ORDER BY timestamp) as close,
                 SUM(volume) as volume,
                 COUNT(*) as tick_count
-            FROM market_data
+            FROM market_data_unified
             WHERE {where_clause}
             GROUP BY symbol, {bucket_sql}
             ORDER BY timestamp
@@ -218,7 +218,7 @@ class QueryAPI:
                 params.append(end_date)
             
             where_clause = " AND ".join(where_clauses)
-            data_source = f"(SELECT * FROM market_data WHERE {where_clause})"
+            data_source = f"(SELECT * FROM market_data_unified WHERE {where_clause})"
         
         # Build indicator calculations
         indicator_calcs = []
@@ -313,7 +313,7 @@ class QueryAPI:
             params.append(date_filter)
         else:
             # Use latest available date
-            where_clauses.append("date_partition = (SELECT MAX(date_partition) FROM market_data)")
+            where_clauses.append("date_partition = (SELECT MAX(date_partition) FROM market_data_unified)")
         
         where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
         
@@ -336,7 +336,7 @@ class QueryAPI:
                 (MAX(high) - MIN(low)) / LAST(close ORDER BY timestamp) * 100 as day_range_pct,
                 AVG(volume) as avg_volume_per_minute,
                 STDDEV(close) as price_volatility
-            FROM market_data
+            FROM market_data_unified
             WHERE {where_clause}
             GROUP BY symbol, date_partition
             ORDER BY day_change_pct DESC

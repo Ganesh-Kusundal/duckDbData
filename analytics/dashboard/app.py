@@ -817,7 +817,7 @@ def load_market_data():
             m.timestamp,
             COALESCE(m.industry, n.industry, 'Unknown') as industry,
             n.company_name
-        FROM market_data m
+        FROM market_data_unified m
         LEFT JOIN nifty500_stocks n ON m.symbol = n.symbol
         WHERE m.date_partition = CURRENT_DATE
         LIMIT 1000
@@ -855,49 +855,13 @@ def load_market_data():
             print(f"✅ Fetched {len(df)} records from API")
             return
 
-        # Fallback 2: Limited sample
-        st.warning("No real market data available - using limited sample for demo")
-        create_limited_sample_data()
+        # No data available
+        st.error("No market data available from database or API. Please ensure data is loaded and API is running.")
 
     except Exception as e:
         print(f"⚠️ Database and API fetch failed: {e}")
         st.error(f"Failed to load market data: {e}")
-        create_limited_sample_data()
 
-def create_limited_sample_data():
-    """Create limited sample data only when absolutely necessary."""
-    import numpy as np
-    from analytics.utils.data_processor import DataProcessor
-
-    # Minimal sample with realistic values - only 5 symbols to encourage real data usage
-    sample_symbols = ['HDFCBANK', 'RELIANCE', 'TCS', 'INFY', 'ITC']
-    sample_industries = ['Financial Services', 'Oil Gas & Consumable Fuels',
-                        'Information Technology', 'Information Technology', 'Fast Moving Consumer Goods']
-    
-    # Generate 20 data points (4 per symbol) with timestamp
-    timestamps = pd.date_range(start='2025-09-06 09:15:00', periods=20, freq='5min')
-    
-    data = {
-        'symbol': [sym for sym in sample_symbols for _ in range(4)],
-        'industry': [ind for ind in sample_industries for _ in range(4)],
-        'company_name': [f"{sym} Ltd." for sym in sample_symbols for _ in range(4)],
-        'timestamp': list(timestamps) * 5[:20],
-        'open': np.random.uniform(1500, 2500, 20),
-        'high': np.random.uniform(1500, 2600, 20),
-        'low': np.random.uniform(1400, 2500, 20),
-        'close': np.random.uniform(1500, 2500, 20),
-        'volume': np.random.randint(50000, 500000, 20)
-    }
-
-    df = pd.DataFrame(data)
-    
-    # Process with real indicators even for sample data
-    df = DataProcessor.calculate_technical_indicators(df)
-    df = DataProcessor.detect_volume_spikes(df, threshold=1.5)
-    
-    st.session_state.market_data = df
-    print(f"⚠️ Created limited sample data with {len(df)} records - please ensure real data is available")
-    st.warning("Using sample data. For production, ensure market_data table is populated with real NIFTY-500 data.")
 
 def fetch_scan_results_from_api() -> list:
     """Fetch scan results from FastAPI scanner endpoint."""
@@ -951,7 +915,7 @@ def render_symbol_detail_chart(symbol: str):
         query = f"""
         SELECT
             timestamp, open, high, low, close, volume
-        FROM market_data
+        FROM market_data_unified
         WHERE symbol = '{symbol}'
         AND date_partition = CURRENT_DATE
         ORDER BY timestamp

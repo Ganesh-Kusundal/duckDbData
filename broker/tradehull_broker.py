@@ -60,17 +60,14 @@ def get_broker(force_new=False):
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         env_path = os.path.join(project_root, '.env')
         dotenv.load_dotenv(env_path)
-        
+
         # Also try broker_config.env in project root
-        broker_config_path = os.path.join(project_root, '.env')
+        broker_config_path = os.path.join(project_root, 'broker_config.env')
         dotenv.load_dotenv(broker_config_path)
     
     # Get credentials from environment variables
     client_id = os.environ.get("DHAN_CLIENT_ID", "").strip("'\"")
     access_token = os.environ.get("DHAN_API_TOKEN", "").strip("'\"")
-    client_id="1106251237"
-    access_token="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzU5MTMzNDk1LCJ0b2tlbkNvbnN1bWVyVHlwZSI6IlNFTEYiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwNjI1MTIzNyJ9.ukAf0sFzYgNFCjw0T_B4i5VYLpCK2kt2ez9WmRbXyqfU1460q__rKxebgT0r5x30FOL2P0iwbzfOhfpZgl5Qkw"
-
     # Do not print sensitive credentials
     logger.info("Loaded DHAN credentials from environment variables")
     # Validate that credentials are provided
@@ -163,34 +160,6 @@ class TradehullBrokerWrapper:
     def is_available(self) -> bool:
         """Check if broker is available and ready to use."""
         return self.is_connected()
-
-    def get_historical_data(self, symbol: str, exchange: str = "NSE", timeframe: str = "day",
-                           start_date: Optional[str] = None, end_date: Optional[str] = None) -> Optional[Any]:
-        """
-        Get historical data using the standardized broker approach.
-
-        Args:
-            symbol: Trading symbol (e.g., 'RELIANCE', 'TCS')
-            exchange: Exchange (default: 'NSE')
-            timeframe: Timeframe (default: 'day')
-            start_date: Start date in YYYY-MM-DD format
-            end_date: End date in YYYY-MM-DD format
-
-        Returns:
-            Historical data or None if failed
-        """
-        try:
-            # Use the underlying Tradehull instance with the correct parameters
-            return self._tradehull.get_historical_data(
-                tradingsymbol=symbol,
-                exchange=exchange,
-                timeframe=timeframe,
-                start_date=start_date,
-                end_date=end_date
-            )
-        except Exception as e:
-            logger.error(f"Error getting historical data for {symbol}: {e}")
-            return None
     
     async def get_symbol_info_robust(self, symbol: str, exchange: str = "NSE") -> Optional[Dict[str, Any]]:
         """Get symbol information robustly."""

@@ -126,26 +126,32 @@ async def database_metrics() -> Dict[str, Any]:
         Current database metrics
     """
     try:
-        from ...infrastructure.core.database import DuckDBManager
+        from ....infrastructure.adapters.duckdb_adapter import DuckDBAdapter
+        from ....infrastructure.config.settings import get_settings
+        from datetime import datetime
 
-        db_manager = DuckDBManager()
-
-        with db_manager.get_connection() as conn:
-            result = conn.execute("""
+        adapter = DuckDBAdapter(database_path=get_settings().database.path)
+        df = adapter.execute_query(
+            """
                 SELECT
                     COUNT(*) as total_records,
                     COUNT(DISTINCT symbol) as total_symbols,
                     MAX(timestamp) as latest_record,
                     AVG(volume) as avg_volume
-                FROM market_data
-            """).fetchone()
+                FROM market_data_unified
+            """
+        )
+        total_records = int(df.iloc[0]["total_records"]) if not df.empty else 0
+        total_symbols = int(df.iloc[0]["total_symbols"]) if not df.empty else 0
+        latest_record = df.iloc[0]["latest_record"] if not df.empty else None
+        avg_volume = float(df.iloc[0]["avg_volume"]) if not df.empty else 0.0
 
         return {
             "timestamp": datetime.now().isoformat(),
-            "total_records": result[0] if result else 0,
-            "total_symbols": result[1] if result else 0,
-            "latest_record": str(result[2]) if result and result[2] else None,
-            "avg_volume": float(result[3]) if result and result[3] else 0.0
+            "total_records": total_records,
+            "total_symbols": total_symbols,
+            "latest_record": str(latest_record) if latest_record else None,
+            "avg_volume": avg_volume,
         }
 
     except Exception as e:

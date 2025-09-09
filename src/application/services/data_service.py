@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ...domain.repositories.market_data_repo import MarketDataRepository
-from ...infrastructure.messaging.event_bus import EventBus
+from ...application.ports.event_bus_port import EventBusPort
 from ...infrastructure.logging import get_logger
 
 logger = get_logger(__name__)
@@ -67,7 +67,7 @@ class DataService:
     def __init__(
         self,
         market_data_repo: MarketDataRepository,
-        event_bus: EventBus
+        event_bus: EventBusPort
     ):
         """
         Initialize the data service.

@@ -16,6 +16,8 @@ import csv
 import os
 
 from ..base_scanner import BaseScanner
+from ...interfaces.base_scanner_interface import IBaseScanner
+from ...ports.scanner_read_port import ScannerReadPort
 
 
 class CRPScanner(BaseScanner):
@@ -29,6 +31,11 @@ class CRPScanner(BaseScanner):
     - Professional table display with comprehensive CRP metrics
     - CSV export functionality
     """
+
+    def __init__(self, *args, scanner_read_port: ScannerReadPort = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Require explicit injection to avoid infra dependency in strategies
+        self.scanner_read = scanner_read_port
 
     @property
     def scanner_name(self) -> str:
@@ -118,339 +125,48 @@ class CRPScanner(BaseScanner):
 
     def scan(self, scan_date: date, cutoff_time: time = time(9, 50)) -> pd.DataFrame:
         """
-        Backward compatibility method - scans single day and returns DataFrame.
-        For enhanced functionality, use scan_date_range() instead.
-
-        Args:
-            scan_date: Date to scan
-            cutoff_time: Time cutoff for scanning
-
-        Returns:
-            DataFrame with CRP analysis (limited functionality)
+        Backward compatibility: single-day scan returning a DataFrame.
+        Uses ScannerReadPort-backed single-day scan under the hood.
         """
-        print(f"⚠️  Single-day scan mode (use scan_date_range() for full functionality)")
-
-        # Get available symbols
-        all_symbols = self.get_available_symbols()
-        print(f"📊 Analyzing {len(all_symbols)} symbols for CRP patterns...")
-
-        # Enhanced CRP query with probability scoring for backward compatibility
-        crp_query = """
-        WITH current_data AS (
-            SELECT
-                symbol,
-                close as current_price,
-                open as open_price,
-                high as current_high,
-                low as current_low,
-                volume as current_volume,
-                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn
-            FROM market_data
-            WHERE date_partition = ?
-                AND CAST(timestamp AS TIME) <= ?
-                AND close BETWEEN ? AND ?
-                AND volume BETWEEN ? AND ?
-        ),
-
-        latest_prices AS (
-            SELECT * FROM current_data WHERE rn = 1
-        ),
-
-        recent_ranges AS (
-            SELECT
-                symbol,
-                AVG(high - low) / NULLIF(AVG((high + low)/2), 0) * 100 as avg_range_pct,
-                AVG(volume) as avg_volume
-            FROM market_data
-            WHERE date_partition < ?
-                AND date_partition >= ?
-            GROUP BY symbol
-        ),
-
-        crp_candidates AS (
-            SELECT
-                lp.symbol,
-                lp.current_price,
-                lp.current_high,
-                lp.current_low,
-                lp.current_volume,
-                rr.avg_range_pct,
-                rr.avg_volume,
-                -- CRP Score Components
-                -- 1. Close near high/low (40% weight)
-                CASE
-                    WHEN ABS(lp.current_price - lp.current_high) / NULLIF(lp.current_high, 0) * 100 <= ?
-                        THEN 0.4
-                    WHEN ABS(lp.current_price - lp.current_low) / NULLIF(lp.current_low, 0) * 100 <= ?
-                        THEN 0.4
-                    ELSE 0.1
-                END as close_score,
-                -- 2. Range tightness (30% weight)
-                CASE
-                    WHEN (lp.current_high - lp.current_low) / NULLIF(lp.current_price, 0) * 100 <= ?
-                        THEN 0.3
-                    WHEN (lp.current_high - lp.current_low) / NULLIF(lp.current_price, 0) * 100 <= ? * 1.5
-                        THEN 0.2
-                    ELSE 0.05
-                END as range_score,
-                -- 3. Volume pattern (20% weight)
-                CASE
-                    WHEN lp.current_volume > rr.avg_volume * 1.2 THEN 0.2
-                    WHEN lp.current_volume > rr.avg_volume * 0.8 THEN 0.15
-                    ELSE 0.05
-                END as volume_score,
-                -- 4. Price momentum (10% weight)
-                CASE
-                    WHEN (lp.current_price - lp.open_price) / NULLIF(lp.open_price, 0) > 0.005 THEN 0.1
-                    WHEN (lp.current_price - lp.open_price) / NULLIF(lp.open_price, 0) > 0 THEN 0.05
-                    ELSE 0.02
-                END as momentum_score
-            FROM latest_prices lp
-            LEFT JOIN recent_ranges rr ON lp.symbol = rr.symbol
-            WHERE rr.avg_range_pct IS NOT NULL
-                AND rr.avg_volume IS NOT NULL
-        ),
-
-        final_crp AS (
-            SELECT *,
-                (close_score + range_score + volume_score + momentum_score) * 100 as crp_probability_score,
-                (current_high - current_low) / NULLIF(current_price, 0) * 100 as current_range_pct,
-                CASE
-                    WHEN ABS(current_price - current_high) / NULLIF(current_high, 0) * 100 <= ? THEN 'Near High'
-                    WHEN ABS(current_price - current_low) / NULLIF(current_low, 0) * 100 <= ? THEN 'Near Low'
-                    ELSE 'Mid Range'
-                END as close_position
-            FROM crp_candidates
-            WHERE (close_score + range_score + volume_score + momentum_score) > 0.5
-        )
-
-        SELECT *
-        FROM final_crp
-        WHERE crp_probability_score > 30  -- Minimum CRP probability threshold
-        ORDER BY crp_probability_score DESC
-        LIMIT ?
-        """
-
-        analysis_start = scan_date - timedelta(days=self.config['consolidation_period'])
-
-        params = [
-            scan_date,
-            cutoff_time,
-            self.config['min_price'], self.config['max_price'],
-            self.config['min_volume'], self.config['max_volume'],
-            scan_date,
-            analysis_start,
-            self.config['close_threshold_pct'],  # Close threshold
-            self.config['close_threshold_pct'],  # Close threshold
-            self.config['range_threshold_pct'],  # Range threshold
-            self.config['range_threshold_pct'],  # Range threshold
-            self.config['close_threshold_pct'],  # Close threshold for position
-            self.config['close_threshold_pct'],  # Close threshold for position
-            self.config['max_results_per_day']
-        ]
-
+        print("⚠️  Single-day scan mode (use scan_date_range() for full functionality)")
         try:
-            result = self._execute_query(crp_query, params)
-
-            if result.empty:
+            records = self._scan_single_day_crp(scan_date, cutoff_time)
+            if not records:
                 print("⚠️  No stocks showing clear CRP patterns")
                 return pd.DataFrame()
-
-            print(f"✅ Found {len(result)} stocks with CRP patterns")
-            return result
-
+            return pd.DataFrame.from_records(records)
         except Exception as e:
             print(f"❌ Error in CRP scanning: {e}")
-            import traceback
-            traceback.print_exc()
             return pd.DataFrame()
 
     def _scan_single_day_crp(self, scan_date: date, cutoff_time: time) -> List[Dict[str, Any]]:
-        """Scan for CRP patterns on a single day."""
+        """Scan for CRP patterns on a single day via ScannerRead port."""
         try:
-            # Ensure database connection is established
-            connection = self.db_manager.connect()
-            cursor = connection.cursor()
-
-            # Enhanced CRP query with probability scoring for top 3 stocks
-            query = """
-            WITH crp_candidates AS (
-                SELECT
-                    symbol,
-                    close as crp_price,
-                    open as open_price,
-                    high as current_high,
-                    low as current_low,
-                    volume as current_volume,
-                    (high - low) / NULLIF(close, 0) * 100 as current_range_pct,
-                    -- CRP Components Scoring
-                    -- Close Position (40% weight)
-                    CASE
-                        WHEN ABS(close - high) / NULLIF(high, 0) * 100 <= ? THEN 0.4
-                        WHEN ABS(close - low) / NULLIF(low, 0) * 100 <= ? THEN 0.4
-                        ELSE 0.1
-                    END as close_score,
-                    -- Range Tightness (30% weight)
-                    CASE
-                        WHEN (high - low) / NULLIF(close, 0) * 100 <= ? THEN 0.3
-                        WHEN (high - low) / NULLIF(close, 0) * 100 <= ? * 1.5 THEN 0.2
-                        ELSE 0.05
-                    END as range_score,
-                    -- Volume Pattern (20% weight)
-                    CASE
-                        WHEN volume > 75000 THEN 0.2
-                        WHEN volume > 50000 THEN 0.15
-                        WHEN volume > 25000 THEN 0.1
-                        ELSE 0.05
-                    END as volume_score,
-                    -- Momentum (10% weight)
-                    CASE
-                        WHEN (close - open) / NULLIF(open, 0) > 0.01 THEN 0.1
-                        WHEN (close - open) / NULLIF(open, 0) > 0 THEN 0.05
-                        ELSE 0.02
-                    END as momentum_score,
-                    -- Overall CRP Probability
-                    (
-                        CASE
-                            WHEN ABS(close - high) / NULLIF(high, 0) * 100 <= ? THEN 0.4
-                            WHEN ABS(close - low) / NULLIF(low, 0) * 100 <= ? THEN 0.4
-                            ELSE 0.1
-                        END +
-                        CASE
-                            WHEN (high - low) / NULLIF(close, 0) * 100 <= ? THEN 0.3
-                            WHEN (high - low) / NULLIF(close, 0) * 100 <= ? * 1.5 THEN 0.2
-                            ELSE 0.05
-                        END +
-                        CASE
-                            WHEN volume > 75000 THEN 0.2
-                            WHEN volume > 50000 THEN 0.15
-                            WHEN volume > 25000 THEN 0.1
-                            ELSE 0.05
-                        END +
-                        CASE
-                            WHEN (close - open) / NULLIF(open, 0) > 0.01 THEN 0.1
-                            WHEN (close - open) / NULLIF(open, 0) > 0 THEN 0.05
-                            ELSE 0.02
-                        END
-                    ) * 100 as crp_probability_score,
-                    -- Close Position Classification
-                    CASE
-                        WHEN ABS(close - high) / NULLIF(high, 0) * 100 <= ? THEN 'Near High'
-                        WHEN ABS(close - low) / NULLIF(low, 0) * 100 <= ? THEN 'Near Low'
-                        ELSE 'Mid Range'
-                    END as close_position
-                FROM market_data
-                WHERE date_partition = ?
-                    AND CAST(timestamp AS TIME) <= ?
-                    AND close BETWEEN ? AND ?
-                    AND volume BETWEEN ? AND ?
-                    AND (high - low) / NULLIF(close, 0) * 100 <= ?  -- Range filter
+            if not getattr(self, 'scanner_read', None):
+                raise RuntimeError("ScannerRead port is not available")
+            results = self.scanner_read.get_crp_candidates(
+                scan_date=scan_date,
+                cutoff_time=cutoff_time,
+                config=self.config,
+                max_results=self.config.get('max_results_per_day', 3),
             )
-            SELECT *
-            FROM crp_candidates
-            WHERE crp_probability_score > 30  -- Minimum CRP probability threshold
-            ORDER BY crp_probability_score DESC
-            LIMIT ?
-            """
-
-            params = [
-                self.config['close_threshold_pct'],  # Close threshold
-                self.config['close_threshold_pct'],  # Close threshold
-                self.config['range_threshold_pct'],  # Range threshold
-                self.config['range_threshold_pct'],  # Range threshold
-                self.config['close_threshold_pct'],  # Close threshold for probability
-                self.config['close_threshold_pct'],  # Close threshold for probability
-                self.config['range_threshold_pct'],  # Range threshold for probability
-                self.config['range_threshold_pct'],  # Range threshold for probability
-                self.config['close_threshold_pct'],  # Close threshold for position
-                self.config['close_threshold_pct'],  # Close threshold for position
-                scan_date.isoformat(),
-                cutoff_time.isoformat(),
-                self.config['min_price'],
-                self.config['max_price'],
-                self.config['min_volume'],
-                self.config['max_volume'],
-                self.config['range_threshold_pct'] * 2,  # Relaxed range filter
-                self.config['max_results_per_day']
-            ]
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            results = []
-            for row in rows:
-                result = {
-                    'symbol': row[0],
-                    'crp_price': float(row[1]) if row[1] else 0,
-                    'open_price': float(row[2]) if row[2] else 0,
-                    'current_high': float(row[3]) if row[3] else 0,
-                    'current_low': float(row[4]) if row[4] else 0,
-                    'current_volume': int(row[5]) if row[5] else 0,
-                    'current_range_pct': float(row[6]) if row[6] else 0,
-                    'close_score': float(row[7]) if row[7] else 0,
-                    'range_score': float(row[8]) if row[8] else 0,
-                    'volume_score': float(row[9]) if row[9] else 0,
-                    'momentum_score': float(row[10]) if row[10] else 0,
-                    'crp_probability_score': float(row[11]) if row[11] else 0,
-                    'close_position': row[12] if row[12] else 'Unknown',
-                    'scan_date': scan_date,
-                    'crp_time': cutoff_time
-                }
-                results.append(result)
-
-            cursor.close()
+            for r in results:
+                r['scan_date'] = scan_date
+                r['crp_time'] = cutoff_time
             return results
-
         except Exception as e:
             print(f"❌ Error in single day CRP scan: {e}")
             return []
 
     def _get_end_of_day_prices(self, symbols: List[str], scan_date: date, end_time: time) -> Dict[str, Dict[str, Any]]:
-        """Get end-of-day prices for the given symbols."""
+        """Get end-of-day prices for the given symbols using optimized batch query."""
         if not symbols:
             return {}
 
         try:
-            # Ensure database connection is established
-            connection = self.db_manager.connect()
-            cursor = connection.cursor()
-
-            # Create placeholders for IN clause
-            placeholders = ','.join(['?' for _ in symbols])
-
-            query = f"""
-            SELECT
-                symbol,
-                close as eod_price,
-                high as eod_high,
-                low as eod_low,
-                volume as eod_volume
-            FROM market_data
-            WHERE date_partition = ?
-                AND symbol IN ({placeholders})
-                AND CAST(timestamp AS TIME) <= ?
-            ORDER BY symbol, timestamp DESC
-            """
-
-            params = [scan_date.isoformat()] + symbols + [end_time.isoformat()]
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            eod_data = {}
-            for row in rows:
-                symbol = row[0]
-                if symbol not in eod_data:  # Take the most recent entry for each symbol
-                    eod_data[symbol] = {
-                        'eod_price': float(row[1]) if row[1] else 0,
-                        'eod_high': float(row[2]) if row[2] else 0,
-                        'eod_low': float(row[3]) if row[3] else 0,
-                        'eod_volume': int(row[4]) if row[4] else 0
-                    }
-
-            cursor.close()
-            return eod_data
-
+            if not getattr(self, 'scanner_read', None):
+                raise RuntimeError("ScannerRead port is not available")
+            return self.scanner_read.get_end_of_day_prices(symbols, scan_date, end_time)
         except Exception as e:
             print(f"❌ Error getting end-of-day prices: {e}")
             return {}
@@ -587,6 +303,7 @@ class CRPScanner(BaseScanner):
             print(f"   Success Rate: {success_rate:.1f}%")
             print(f"   Average Price Change: {avg_change:.2f}%")
             print(f"   Average CRP Probability Score: {sum(r.get('crp_probability_score', 0) for r in results) / len(results) if results else 0:.1f}%")
+
 
     def export_results(self, results: List[Dict[str, Any]], filename: str = "enhanced_crp_results.csv"):
         """Export results to CSV file."""

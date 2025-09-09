@@ -15,3 +15,6 @@ else
   echo "On macOS, use: open -a Terminal $PROJECT_DIR"
   echo "Or: open -a iTerm $PROJECT_DIR"
 fi
+
+
+

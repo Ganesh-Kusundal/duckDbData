@@ -1,0 +1,106 @@
+[
+  {
+    "rule_id": "crp-high-confidence",
+    "name": "High Confidence CRP Scanner",
+    "description": "Identifies Close-Range-Pattern signals with 2% close threshold and 3% range threshold",
+    "rule_type": "crp",
+    "enabled": true,
+    "priority": 45,
+    "conditions": {
+      "time_window": {
+        "start": "09:50",
+        "end": "10:30"
+      },
+      "crp_conditions": {
+        "close_threshold_pct": 2.0,
+        "range_threshold_pct": 3.0,
+        "consolidation_period": 5,
+        "close_position_preference": "any"
+      },
+      "market_conditions": {
+        "min_price": 50,
+        "max_price": 2000,
+        "min_volume": 25000
+      }
+    },
+    "actions": {
+      "signal_type": "BUY",
+      "confidence_calculation": "weighted_average",
+      "risk_management": {
+        "stop_loss_pct": 0.02,
+        "take_profit_pct": 0.06,
+        "max_position_size_pct": 5
+      }
+    },
+    "metadata": {
+      "author": "rule_generator",
+      "created_at": "2025-09-08T22:00:00Z",
+      "version": "1.0.0",
+      "tags": ["crp", "pattern", "consolidation"],
+      "performance_expectations": {
+        "expected_win_rate": 0.68,
+        "expected_profit_factor": 1.9
+      },
+      "risk_assessment": {
+        "risk_level": "low",
+        "market_conditions": "sideways",
+        "liquidity_requirements": "medium",
+        "holding_period": "intraday"
+      }
+    }
+  },
+  {
+    "rule_id": "crp-tight-range",
+    "name": "Tight Range CRP Scanner",
+    "description": "Identifies Close-Range-Pattern signals with 1.5% close threshold and 2% range threshold",
+    "rule_type": "crp",
+    "enabled": true,
+    "priority": 50,
+    "conditions": {
+      "time_window": {
+        "start": "09:45",
+        "end": "10:15"
+      },
+      "crp_conditions": {
+        "close_threshold_pct": 1.5,
+        "range_threshold_pct": 2.0,
+        "consolidation_period": 3,
+        "close_position_preference": "mid_range"
+      },
+      "market_conditions": {
+        "min_price": 100,
+        "max_price": 5000,
+        "min_volume": 50000
+      }
+    },
+    "actions": {
+      "signal_type": "BUY",
+      "confidence_calculation": "weighted_average",
+      "risk_management": {
+        "stop_loss_pct": 0.015,
+        "take_profit_pct": 0.045,
+        "max_position_size_pct": 8
+      },
+      "alert_settings": {
+        "email_notification": true,
+        "alert_threshold": 0.75
+      }
+    },
+    "metadata": {
+      "author": "rule_generator",
+      "created_at": "2025-09-08T22:00:00Z",
+      "version": "1.0.0",
+      "tags": ["crp", "tight-range", "high-confidence"],
+      "performance_expectations": {
+        "expected_win_rate": 0.72,
+        "expected_profit_factor": 2.2
+      },
+      "risk_assessment": {
+        "risk_level": "low",
+        "market_conditions": "sideways",
+        "liquidity_requirements": "high",
+        "holding_period": "intraday"
+      }
+    }
+  }
+]

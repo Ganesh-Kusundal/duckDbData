@@ -1,5 +1,5 @@
 # Database module configuration
-path: "financial_data.duckdb"
+path: "data/financial_data.duckdb"
 memory: false
 extension_dir: "./extensions"
 max_connections: 5

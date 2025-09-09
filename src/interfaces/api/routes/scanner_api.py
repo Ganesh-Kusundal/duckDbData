@@ -19,8 +19,12 @@ import csv
 import io
 
 from ....infrastructure.logging import get_logger
-from ....infrastructure.core.database import DuckDBManager
 from ....application.scanners.strategies.breakout_scanner import BreakoutScanner
+from ....application.scanners.strategies.crp_scanner import CRPScanner
+from ....infrastructure.config.settings import get_settings
+from ....infrastructure.adapters.duckdb_adapter import DuckDBAdapter
+from ....infrastructure.database.unified_duckdb import UnifiedDuckDBManager, DuckDBConfig
+from ....infrastructure.adapters.scanner_read_adapter import DuckDBScannerReadAdapter
 from ....domain.exceptions import ScannerError
 
 logger = get_logger(__name__)
@@ -33,6 +37,8 @@ class ScannerType(str, Enum):
     """Available scanner types."""
     BREAKOUT = "breakout"
     ENHANCED_BREAKOUT = "enhanced_breakout"
+    CRP = "crp"
+    ENHANCED_CRP = "enhanced_crp"
     VOLUME_SPIKE = "volume_spike"
     TECHNICAL = "technical"
 
@@ -128,35 +134,72 @@ class MarketOverview(BaseModel):
     volatility_regime: str
     last_updated: datetime
 
-# Dependency injection
-def get_db_manager() -> DuckDBManager:
-    """Get database manager instance."""
-    return DuckDBManager()
+def get_unified_manager() -> UnifiedDuckDBManager:
+    """Get unified DuckDB manager instance."""
+    settings = get_settings()
+    config = DuckDBConfig(
+        database_path=settings.database.path,
+        max_connections=getattr(settings.database, 'max_connections', 10),
+        memory_limit=getattr(settings.database, 'memory_limit', '2GB'),
+        threads=getattr(settings.database, 'threads', 4),
+        enable_object_cache=getattr(settings.database, 'enable_object_cache', True),
+        read_only=True,  # API operations are typically read-only
+        enable_httpfs=getattr(settings.database, 'enable_httpfs', True),
+        parquet_root=getattr(settings.database, 'parquet_root', None),
+        use_parquet_in_unified_view=getattr(settings.database, 'use_parquet_in_unified_view', True)
+    )
+    return UnifiedDuckDBManager(config)
 
-def get_breakout_scanner(db_manager: DuckDBManager = Depends(get_db_manager)) -> BreakoutScanner:
-    """Get breakout scanner instance."""
-    return BreakoutScanner(db_manager=db_manager)
+def get_db_adapter() -> DuckDBAdapter:
+    """Get configured DuckDB adapter (read-only by convention for API reads)."""
+    settings = get_settings()
+    return DuckDBAdapter(database_path=settings.database.path)
+
+def get_unified_scanner_adapter() -> DuckDBScannerReadAdapter:
+    """Get unified scanner read adapter instance."""
+    unified_manager = get_unified_manager()
+    return DuckDBScannerReadAdapter(
+        unified_manager=unified_manager,
+        enable_cache=True,  # Enable caching for API performance
+        cache_ttl=300  # 5 minutes cache TTL for API responses
+    )
+
+def get_breakout_scanner() -> BreakoutScanner:
+    """Get breakout scanner instance with unified adapter."""
+    adapter = get_unified_scanner_adapter()
+    return BreakoutScanner(scanner_read_port=adapter)
+
+def get_crp_scanner() -> CRPScanner:
+    """Get CRP scanner instance with unified adapter."""
+    adapter = get_unified_scanner_adapter()
+    return CRPScanner(scanner_read_port=adapter)
 
 # API Endpoints
 
 @router.get("/health", response_model=Dict[str, Any])
 async def scanner_health():
     """
-    Get scanner service health status.
-    
+    Get scanner service health status using unified layer.
+
     Returns:
         Health status information
     """
     try:
-        db_manager = DuckDBManager()
-        symbols = db_manager.get_available_symbols()
-        
+        unified_manager = get_unified_manager()
+        df = unified_manager.persistence_query("SELECT COUNT(DISTINCT symbol) AS count FROM market_data_unified")
+        symbol_count = int(df.iloc[0]["count"]) if not df.empty else 0
+
+        # Get connection pool stats
+        pool_stats = unified_manager.get_connection_stats()
+
         return {
             "status": "healthy",
             "service": "scanner_api",
-            "version": "1.0.0",
+            "version": "2.0.0",  # Updated version for unified integration
             "database_connected": True,
-            "available_symbols": len(symbols),
+            "available_symbols": symbol_count,
+            "connection_pool": pool_stats,
+            "unified_layer": True,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -208,8 +251,7 @@ async def get_available_scanners():
 @router.post("/scan", response_model=ScanResponse)
 async def run_scan(
     request: ScanRequest,
-    background_tasks: BackgroundTasks,
-    scanner: BreakoutScanner = Depends(get_breakout_scanner)
+    background_tasks: BackgroundTasks
 ):
     """
     Execute a market scan with specified parameters.
@@ -224,10 +266,16 @@ async def run_scan(
     """
     start_time = datetime.now()
     scan_id = f"scan_{start_time.strftime('%Y%m%d_%H%M%S')}"
-    
+
     try:
         logger.info(f"Starting scan {scan_id} with type {request.scanner_type}")
-        
+
+        # Create scanner instance based on type
+        if request.scanner_type in [ScannerType.CRP, ScannerType.ENHANCED_CRP]:
+            scanner = get_crp_scanner()
+        else:
+            scanner = get_breakout_scanner()
+
         # Update scanner configuration if provided
         if request.config:
             scanner.config.update(request.config)
@@ -537,19 +585,19 @@ async def get_performance_stats(
 async def websocket_live_scan(websocket):
     """
     WebSocket endpoint for live scanning updates.
-    
+
     Provides real-time scan results as they become available.
     """
     await websocket.accept()
-    
+
     try:
-        scanner = BreakoutScanner()
-        
+        scanner = get_breakout_scanner()
+
         while True:
             # Perform quick scan
             today = date.today()
-            df_results = scanner.scan(today, time.now())
-            
+            df_results = scanner.scan(today, time(9, 50))
+
             if not df_results.empty:
                 # Convert to JSON and send
                 results = df_results.to_dict('records')
@@ -558,10 +606,10 @@ async def websocket_live_scan(websocket):
                     "timestamp": datetime.now().isoformat(),
                     "results": results
                 })
-            
+
             # Wait 30 seconds before next scan
             await asyncio.sleep(30)
-            
+
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         await websocket.close()
@@ -618,13 +666,13 @@ async def run_batch_scan(
         # Create semaphore to limit concurrent scans
         semaphore = asyncio.Semaphore(max_concurrent)
         
-        async def run_single_scan(request: ScanRequest) -> ScanResponse:
+        async def run_single_scan(req: ScanRequest) -> ScanResponse:
             async with semaphore:
-                scanner = BreakoutScanner()
-                return await run_scan(request, background_tasks, scanner)
+                # Reuse the same endpoint logic to ensure consistent behavior
+                return await run_scan(req, background_tasks)
         
         # Execute all scans concurrently
-        tasks = [run_single_scan(request) for request in requests]
+        tasks = [run_single_scan(req) for req in requests]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Filter out exceptions and return successful results

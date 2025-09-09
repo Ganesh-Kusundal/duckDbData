@@ -1,4 +1,18 @@
 # Global configuration for the trading platform
+performance:
+  fast_mode: false
+  connection_pool_enabled: true
+  connection_pool_size: 10
+  connection_pool_timeout: 30.0
+  skip_complex_verification: false
+  verification_timeout: 5.0
+  essential_checks_only: false
+  query_cache_enabled: true
+  query_cache_ttl: 300
+  prepared_statements_enabled: true
+  performance_monitoring: false
+  metrics_collection: false
+
 scanners:
   default:
     obv_threshold: 100.0
@@ -10,7 +24,7 @@ scanners:
     timeframe: "1d"
 
 database:
-  path: "financial_data.duckdb"
+  path: "data/financial_data.duckdb"
   memory: false
   extension_dir: "./extensions"
   max_connections: 5

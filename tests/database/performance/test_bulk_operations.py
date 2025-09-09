@@ -5,13 +5,13 @@ from decimal import Decimal
 from datetime import datetime
 import pandas as pd
 
-from database.adapters.duckdb_adapter import DuckDBAdapter
+from src.infrastructure.adapters.duckdb_adapter import DuckDBAdapter
 from src.domain.entities.market_data import (
     OHLCV,
     MarketData,
     MarketDataBatch
 )
-from database.repositories.duckdb_market_repo import DuckDBMarketDataRepository
+from src.infrastructure.repositories.duckdb_market_repo import DuckDBMarketDataRepository
 
 
 @pytest.fixture

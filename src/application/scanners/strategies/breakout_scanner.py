@@ -11,6 +11,8 @@ import csv
 import os
 
 from ..base_scanner import BaseScanner
+from ...interfaces.base_scanner_interface import IBaseScanner
+from ...ports.scanner_read_port import ScannerReadPort
 
 
 class BreakoutScanner(BaseScanner):
@@ -24,6 +26,11 @@ class BreakoutScanner(BaseScanner):
     - Professional table display with comprehensive metrics
     - CSV export functionality
     """
+
+    def __init__(self, *args, scanner_read_port: ScannerReadPort = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Require explicit injection to avoid infra dependency in strategies
+        self.scanner_read = scanner_read_port
 
     @property
     def scanner_name(self) -> str:
@@ -111,255 +118,48 @@ class BreakoutScanner(BaseScanner):
 
     def scan(self, scan_date: date, cutoff_time: time = time(9, 50)) -> pd.DataFrame:
         """
-        Backward compatibility method - scans single day and returns DataFrame.
-        For enhanced functionality, use scan_date_range() instead.
-
-        Args:
-            scan_date: Date to scan
-            cutoff_time: Time cutoff for scanning
-
-        Returns:
-            DataFrame with breakout analysis (limited functionality)
+        Backward compatibility: single-day scan returning a DataFrame.
+        Uses ScannerReadPort-backed single-day scan under the hood.
         """
-        print(f"⚠️  Single-day scan mode (use scan_date_range() for full functionality)")
-
-        # Get available symbols
-        all_symbols = self.get_available_symbols()
-        print(f"📊 Analyzing {len(all_symbols)} symbols for breakout patterns...")
-
-        # Enhanced breakout query with probability scoring for backward compatibility
-        breakout_query = """
-        WITH current_data AS (
-            SELECT
-                symbol,
-                close as current_price,
-                open as open_price,
-                high as current_high,
-                low as current_low,
-                volume as current_volume,
-                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn
-            FROM market_data
-            WHERE date_partition = ?
-                AND CAST(timestamp AS TIME) <= ?
-                AND close BETWEEN ? AND ?
-        ),
-
-        latest_prices AS (
-            SELECT * FROM current_data WHERE rn = 1
-        ),
-
-        recent_highs AS (
-            SELECT
-                symbol,
-                MAX(high) as recent_high,
-                AVG(volume) as avg_volume
-            FROM market_data
-            WHERE date_partition < ?
-                AND date_partition >= ?
-            GROUP BY symbol
-        ),
-
-        breakout_candidates AS (
-            SELECT
-                lp.symbol,
-                lp.current_price,
-                lp.current_high,
-                lp.current_low,
-                lp.current_volume,
-                rh.recent_high,
-                rh.avg_volume,
-                ROUND(((lp.current_high - rh.recent_high) / NULLIF(rh.recent_high, 0)) * 100, 2) as breakout_pct,
-                ROUND(lp.current_volume / NULLIF(rh.avg_volume, 0), 2) as volume_ratio,
-                -- Calculate probability score (same logic as enhanced scanner)
-                (
-                    -- Breakout strength (50% weight)
-                    CASE WHEN ((lp.current_high - rh.recent_high) / NULLIF(rh.recent_high, 0) * 100) > 2.0 THEN 0.5
-                         WHEN ((lp.current_high - rh.recent_high) / NULLIF(rh.recent_high, 0) * 100) > 1.0 THEN 0.3
-                         WHEN ((lp.current_high - rh.recent_high) / NULLIF(rh.recent_high, 0) * 100) > 0.5 THEN 0.2
-                         ELSE 0.1 END +
-                    -- Volume confirmation (30% weight)
-                    CASE WHEN lp.current_volume > 50000 THEN 0.3
-                         WHEN lp.current_volume > 20000 THEN 0.2
-                         WHEN lp.current_volume > 10000 THEN 0.1
-                         ELSE 0.05 END +
-                    -- Price momentum (20% weight)
-                    CASE WHEN (lp.current_price - lp.open_price) / NULLIF(lp.open_price, 0) > 0.01 THEN 0.2 ELSE 0 END
-                ) * 100 as probability_score
-            FROM latest_prices lp
-            LEFT JOIN recent_highs rh ON lp.symbol = rh.symbol
-            WHERE lp.current_high > rh.recent_high * (1.0 + ?/100.0)
-                AND lp.current_volume > rh.avg_volume * ?
-                AND rh.recent_high IS NOT NULL
-                AND rh.avg_volume IS NOT NULL
-        )
-
-        SELECT *
-        FROM breakout_candidates
-        WHERE probability_score > 10  -- Minimum probability threshold
-        ORDER BY probability_score DESC
-        LIMIT ?
-        """
-
-        analysis_start = scan_date - timedelta(days=self.config['consolidation_period'])
-
-        params = [
-            scan_date,
-            cutoff_time,
-            self.config['min_price'], self.config['max_price'],
-            scan_date,
-            analysis_start,
-            self.config['resistance_break_pct'],
-            self.config['breakout_volume_ratio'],
-            self.config['max_results_per_day']
-        ]
-
+        print("⚠️  Single-day scan mode (use scan_date_range() for full functionality)")
         try:
-            result = self._execute_query(breakout_query, params)
-
-            if result.empty:
+            records = self._scan_single_day_breakouts(scan_date, cutoff_time)
+            if not records:
                 print("⚠️  No stocks showing clear breakout patterns")
                 return pd.DataFrame()
-
-            print(f"✅ Found {len(result)} stocks with breakout patterns")
-            return result
-
+            return pd.DataFrame.from_records(records)
         except Exception as e:
             print(f"❌ Error in breakout scanning: {e}")
-            import traceback
-            traceback.print_exc()
             return pd.DataFrame()
 
     def _scan_single_day_breakouts(self, scan_date: date, cutoff_time: time) -> List[Dict[str, Any]]:
         """Scan for breakout patterns on a single day."""
         try:
-            # Ensure database connection is established
-            connection = self.db_manager.connect()
-            cursor = connection.cursor()
-
-            # Enhanced breakout query with probability scoring for top 3 stocks
-            query = """
-            WITH breakout_candidates AS (
-                SELECT
-                    symbol,
-                    close as breakout_price,
-                    open as open_price,
-                    high as current_high,
-                    low as current_low,
-                    volume as current_volume,
-                    high - close as breakout_above_resistance,
-                    (high - close) / NULLIF(close, 0) * 100 as breakout_pct,
-                    volume / NULLIF(AVG(volume) OVER (PARTITION BY symbol ORDER BY date_partition ROWS 4 PRECEDING), 0) as volume_ratio,
-                    -- Calculate probability score (weighted combination of breakout strength and volume confirmation)
-                    (
-                        -- Breakout strength (50% weight) - normalized breakout percentage
-                        CASE WHEN ((high - close) / NULLIF(close, 0) * 100) > 2.0 THEN 0.5
-                             WHEN ((high - close) / NULLIF(close, 0) * 100) > 1.0 THEN 0.3
-                             WHEN ((high - close) / NULLIF(close, 0) * 100) > 0.5 THEN 0.2
-                             ELSE 0.1 END +
-                        -- Volume confirmation (30% weight) - simple volume multiplier
-                        CASE WHEN volume > 50000 THEN 0.3
-                             WHEN volume > 20000 THEN 0.2
-                             WHEN volume > 10000 THEN 0.1
-                             ELSE 0.05 END +
-                        -- Price momentum (20% weight)
-                        CASE WHEN (close - open) / NULLIF(open, 0) > 0.01 THEN 0.2 ELSE 0 END
-                    ) * 100 as probability_score
-                FROM market_data
-                WHERE date_partition = ?
-                    AND CAST(timestamp AS TIME) <= ?
-                    AND close BETWEEN ? AND ?
-                    AND high > close * 1.005  -- At least 0.5% breakout
-                    AND volume > 10000  -- Minimum volume
+            if not getattr(self, 'scanner_read', None):
+                raise RuntimeError("ScannerRead port is not available")
+            results = self.scanner_read.get_breakout_candidates(
+                scan_date=scan_date,
+                cutoff_time=cutoff_time,
+                config=self.config,
+                max_results=self.config.get('max_results_per_day', 3),
             )
-            SELECT *
-            FROM breakout_candidates
-            WHERE probability_score > 10  -- Minimum probability threshold
-            ORDER BY probability_score DESC
-            LIMIT ?
-            """
-
-            params = [
-                scan_date.isoformat(),
-                cutoff_time.isoformat(),
-                self.config['min_price'],
-                self.config['max_price'],
-                self.config['max_results_per_day']
-            ]
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            results = []
-            for row in rows:
-                result = {
-                    'symbol': row[0],
-                    'breakout_price': float(row[1]) if row[1] else 0,
-                    'open_price': float(row[2]) if row[2] else 0,
-                    'current_high': float(row[3]) if row[3] else 0,
-                    'current_low': float(row[4]) if row[4] else 0,
-                    'current_volume': int(row[5]) if row[5] else 0,
-                    'breakout_above_resistance': float(row[6]) if row[6] else 0,
-                    'breakout_pct': float(row[7]) if row[7] else 0,
-                    'volume_ratio': float(row[8]) if row[8] else 0,
-                    'probability_score': float(row[9]) if row[9] else 0,
-                    'scan_date': scan_date,
-                    'breakout_time': cutoff_time
-                }
-                results.append(result)
-
-            cursor.close()
+            for r in results:
+                r['scan_date'] = scan_date
+                r['breakout_time'] = cutoff_time
             return results
-
         except Exception as e:
             print(f"❌ Error in single day scan: {e}")
             return []
 
     def _get_end_of_day_prices(self, symbols: List[str], scan_date: date, end_time: time) -> Dict[str, Dict[str, Any]]:
-        """Get end-of-day prices for the given symbols."""
+        """Get end-of-day prices for the given symbols using optimized batch query."""
         if not symbols:
             return {}
 
         try:
-            # Ensure database connection is established
-            connection = self.db_manager.connect()
-            cursor = connection.cursor()
-
-            # Create placeholders for IN clause
-            placeholders = ','.join(['?' for _ in symbols])
-
-            query = f"""
-            SELECT
-                symbol,
-                close as eod_price,
-                high as eod_high,
-                low as eod_low,
-                volume as eod_volume
-            FROM market_data
-            WHERE date_partition = ?
-                AND symbol IN ({placeholders})
-                AND CAST(timestamp AS TIME) <= ?
-            ORDER BY symbol, timestamp DESC
-            """
-
-            params = [scan_date.isoformat()] + symbols + [end_time.isoformat()]
-
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-
-            eod_data = {}
-            for row in rows:
-                symbol = row[0]
-                if symbol not in eod_data:  # Take the most recent entry for each symbol
-                    eod_data[symbol] = {
-                        'eod_price': float(row[1]) if row[1] else 0,
-                        'eod_high': float(row[2]) if row[2] else 0,
-                        'eod_low': float(row[3]) if row[3] else 0,
-                        'eod_volume': int(row[4]) if row[4] else 0
-                    }
-
-            cursor.close()
-            return eod_data
-
+            if not getattr(self, 'scanner_read', None):
+                raise RuntimeError("ScannerRead port is not available")
+            return self.scanner_read.get_end_of_day_prices(symbols, scan_date, end_time)
         except Exception as e:
             print(f"❌ Error getting end-of-day prices: {e}")
             return {}

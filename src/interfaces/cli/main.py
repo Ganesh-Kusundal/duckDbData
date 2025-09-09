@@ -12,9 +12,14 @@ try:
     from duckdb_financial_infra.infrastructure.logging import get_logger
     logger = get_logger(__name__)
 except ImportError:
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
+    try:
+        # Try relative import for development
+        from ..infrastructure.logging import get_logger
+        logger = get_logger(__name__)
+    except ImportError:
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -51,12 +56,23 @@ def create_cli_app():
         cli.add_command(config.config)
     except ImportError as e:
         logger.warning(f"Some CLI commands could not be loaded: {e}")
-        # Add basic help command
-        @cli.command()
-        def help():
-            """Show help information."""
-            console.print("[yellow]CLI commands are not fully available due to import issues.[/yellow]")
-            console.print("Please ensure the package is properly installed or run from the correct directory.")
+        # Try with alternative imports for development
+        try:
+            from .commands.data import data
+            from .commands.scanners import scanners
+            from .commands.system import system
+            from .commands.config import config
+            cli.add_command(data)
+            cli.add_command(scanners)
+            cli.add_command(system)
+            cli.add_command(config)
+        except ImportError:
+            # Add basic help command
+            @cli.command()
+            def help():
+                """Show help information."""
+                console.print("[yellow]CLI commands are not fully available due to import issues.[/yellow]")
+                console.print("Please ensure the package is properly installed or run from the correct directory.")
 
     return cli
 

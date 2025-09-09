@@ -2,7 +2,7 @@
 Base scanner class for intraday stock selection using DuckDB.
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import List, Dict, Optional, Any, Union
 from datetime import datetime, date, time
 import pandas as pd
@@ -18,33 +18,59 @@ from analytics.core.duckdb_connector import DuckDBAnalytics
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.infrastructure.config.config_manager import ConfigManager
-from src.infrastructure.core.database import DuckDBManager
 from src.infrastructure.core.query_api import QueryAPI
+from src.infrastructure.config.settings import get_settings
+from src.infrastructure.core.database import DuckDBManager
 from src.domain.exceptions import ScannerError
 from src.infrastructure.utils.retry import retry_on_transient_errors, retry_db_operation
 from src.infrastructure.logging import get_logger
+from src.application.interfaces.base_scanner_interface import IBaseScanner
+import duckdb
+import os
 
 logger = get_logger(__name__)
 
 
-class BaseScanner(ABC):
-    """Abstract base class for all scanner implementations."""
+class BaseScanner(IBaseScanner):
+    """Abstract base class for all scanner implementations that follows SOLID principles."""
 
-    def __init__(self, db_manager: DuckDBManager = None, config_manager: Optional[ConfigManager] = None, config: Dict[str, Any] = None, pattern_analyzer: Optional[PatternAnalyzer] = None):
+    def __init__(
+        self,
+        db_path: str = None,
+        config_manager: Optional[ConfigManager] = None,
+        config: Dict[str, Any] = None,
+        pattern_analyzer: Optional[PatternAnalyzer] = None,
+        query_api: Optional[QueryAPI] = None,
+        db_manager: Optional[DuckDBManager] = None,
+    ):
         """
-        Initialize scanner with database manager and configuration.
-        
+        Initialize scanner with database path and configuration.
+
         Args:
-            db_manager: DuckDB manager instance (will create if None)
+            db_path: Path to DuckDB database file
             config_manager: ConfigManager instance for centralized configuration (optional for backward compatibility)
             config: Scanner configuration parameters (fallback if config_manager not provided)
             pattern_analyzer: Optional PatternAnalyzer instance for analytics integration
         """
-        self.db_manager = db_manager or DuckDBManager()
-        self.query_api = QueryAPI(self.db_manager)
+        settings = get_settings()
+        self.db_path = db_path or settings.database.path
+        self._connection = None
+
+        # Prefer injected analytics/query dependencies; otherwise, wire conservatively
+        if query_api is not None:
+            self.query_api = query_api
+        else:
+            # Only instantiate a real DB manager if explicitly provided or settings are usable
+            self.query_api = None
+            try:
+                manager = db_manager or DuckDBManager(db_path=self.db_path)
+                self.query_api = QueryAPI(manager)
+            except Exception:
+                # Fall back to lazy, scanner-local SQL via get_connection
+                pass
         self.config_manager = config_manager
         self.pattern_analyzer = pattern_analyzer
-        
+
         # Backward compatible config loading
         if self.config_manager:
             try:
@@ -90,9 +116,57 @@ class BaseScanner(ABC):
         """
         pass
 
+    def get_connection(self):
+        """Get database connection, creating if necessary."""
+        if self._connection is None:
+            settings = get_settings()
+            if not os.path.exists(self.db_path):
+                raise FileNotFoundError(f"Database file not found: {self.db_path}")
+            # Configure connection using settings
+            config = {
+                "access_mode": "READ_ONLY" if getattr(settings.database, "read_only", False) else "READ_WRITE",
+            }
+            self._connection = duckdb.connect(self.db_path, config=config)
+            # Apply runtime settings if available
+            if getattr(settings.database, "memory_limit", None):
+                self._connection.execute(f"SET memory_limit='{settings.database.memory_limit}'")
+            if getattr(settings.database, "threads", None):
+                self._connection.execute(f"SET threads={int(settings.database.threads)}")
+        return self._connection
+
     def get_available_symbols(self) -> List[str]:
         """Get list of available symbols from database."""
-        return self.db_manager.get_available_symbols()
+        try:
+            conn = self.get_connection()
+            result = conn.execute("SELECT DISTINCT symbol FROM market_data_unified ORDER BY symbol").fetchall()
+            return [row[0] for row in result]
+        except Exception as e:
+            logger.warning(f"Failed to get symbols: {e}")
+            return []
+
+    def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
+        """Execute a query and return results as DataFrame."""
+        try:
+            conn = self.get_connection()
+            if params:
+                if isinstance(params, dict):
+                    # Handle named parameters
+                    formatted_query = query
+                    param_values = []
+                    for key, value in params.items():
+                        placeholder = f":{key}"
+                        if placeholder in formatted_query:
+                            formatted_query = formatted_query.replace(placeholder, "?")
+                            param_values.append(value)
+                    result = conn.execute(formatted_query, param_values)
+                else:
+                    result = conn.execute(query, params)
+            else:
+                result = conn.execute(query)
+            return result.fetchdf()
+        except Exception as e:
+            logger.error(f"Query execution failed: {e}")
+            raise
 
     @retry_on_transient_errors
     def get_market_data(self,
@@ -363,19 +437,19 @@ class BaseScanner(ABC):
     def _execute_query(self, query: str, params: Dict = None) -> pd.DataFrame:
         """
         Execute custom SQL query.
-        
+
         Args:
             query: SQL query string
             params: Query parameters
-            
+
         Returns:
             Query results as DataFrame
-            
+
         Raises:
             ScannerError: If query execution fails
         """
         try:
-            return self.db_manager.execute_custom_query(query, params)
+            return self.execute_query(query, params)
         except Exception as e:
             error_msg = f"Query execution failed in scanner {self.scanner_name}: {str(e)}"
             context = {
@@ -411,7 +485,7 @@ class BaseScanner(ABC):
             SELECT symbol,
                    date_partition,
                    SUM(volume) as daily_volume
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition BETWEEN ? AND ?
             GROUP BY symbol, date_partition
         ) daily_totals

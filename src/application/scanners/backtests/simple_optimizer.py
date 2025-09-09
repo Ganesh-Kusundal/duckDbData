@@ -21,12 +21,14 @@ import json
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from src.infrastructure.core.singleton_database import DuckDBConnectionManager, create_db_manager
+
 class SimpleOptimizer:
     """
     Simple but effective parameter optimizer
     """
 
-    def __init__(self, db_path: str = "../data/financial_data.duckdb",
+    def __init__(self, db_path: str = "data/financial_data.duckdb",
                  start_date: str = "2020-01-01", end_date: str = "2025-12-31"):
         """Initialize the optimizer"""
         self.db_path = db_path
@@ -45,8 +47,7 @@ class SimpleOptimizer:
     def initialize_database(self):
         """Initialize database connection"""
         try:
-            from src.infrastructure.core.database import DuckDBManager
-            self.db_manager = DuckDBManager()
+            self.db_manager = create_db_manager(db_path=self.db_path)
             print("✅ Database connection established")
         except Exception as e:
             print(f"❌ Database initialization failed: {e}")
@@ -333,7 +334,7 @@ class QuickBacktester:
         try:
             query = f"""
             SELECT DISTINCT date_partition
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition >= '{self.start_date}'
             AND date_partition <= '{self.end_date}'
             ORDER BY date_partition
@@ -368,7 +369,7 @@ class QuickBacktester:
         try:
             query = f"""
             SELECT DISTINCT symbol
-            FROM market_data
+            FROM market_data_unified
             WHERE date_partition = '{trade_date}'
             ORDER BY volume DESC
             """
@@ -444,7 +445,7 @@ class QuickBacktester:
 
             query = f"""
             SELECT timestamp, open, high, low, close, volume
-            FROM market_data
+            FROM market_data_unified
             WHERE symbol = '{symbol}'
             AND date_partition = '{trade_date}'
             AND timestamp >= '{start_datetime}'
@@ -468,7 +469,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Simple Parameter Optimizer')
-    parser.add_argument('--db-path', default='../data/financial_data.duckdb',
+    parser.add_argument('--db-path', default='data/financial_data.duckdb',
                        help='Path to DuckDB database')
     parser.add_argument('--start-date', default='2020-01-01',
                        help='Start date (YYYY-MM-DD)')

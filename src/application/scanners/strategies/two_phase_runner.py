@@ -19,6 +19,9 @@ import numpy as np
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from ...ports.market_read_port import MarketReadPort
+
+
 class TwoPhaseIntradayRunner:
     """
     Two-phase intraday trading system:
@@ -58,27 +61,17 @@ class TwoPhaseIntradayRunner:
         print(f"🕘 Scan Time: {self.scan_time}")
         print(f"🏁 End Time: {self.end_time}")
 
-    def initialize_database(self):
-        """Initialize database connection"""
-        try:
-            from src.infrastructure.core.database import DuckDBManager
-            self.db_manager = DuckDBManager()
-            print("✅ Database connection established")
-        except Exception as e:
-            print(f"❌ Database initialization failed: {e}")
-            raise
+    def initialize_database(self, market_read_port: MarketReadPort):
+        """Inject market read port (no infra dependency here)."""
+        self.market_read: MarketReadPort = market_read_port
+        print("✅ Market read port injected")
 
     def get_available_symbols(self) -> List[str]:
         """Get all symbols with data for today"""
         try:
-            query = f"""
-            SELECT DISTINCT symbol
-            FROM market_data
-            WHERE date_partition = '{self.today}'
-            ORDER BY symbol
-            """
-            result = self.db_manager.execute_custom_query(query)
-            symbols = result['symbol'].tolist()
+            if not hasattr(self, 'market_read'):
+                raise RuntimeError("MarketReadPort not injected. Call initialize_database() with a port.")
+            symbols = self.market_read.get_symbols_for_date(self.today)
             print(f"📊 Found {len(symbols)} symbols with data for {self.today}")
             return symbols
         except Exception as e:
@@ -91,17 +84,9 @@ class TwoPhaseIntradayRunner:
             start_datetime = datetime.combine(self.today, start_time)
             end_datetime = datetime.combine(self.today, end_time)
 
-            query = f"""
-            SELECT timestamp, open, high, low, close, volume
-            FROM market_data
-            WHERE symbol = '{symbol}'
-            AND date_partition = '{self.today}'
-            AND timestamp >= '{start_datetime}'
-            AND timestamp <= '{end_datetime}'
-            ORDER BY timestamp
-            """
-
-            result = self.db_manager.execute_custom_query(query)
+            if not hasattr(self, 'market_read'):
+                raise RuntimeError("MarketReadPort not injected. Call initialize_database() with a port.")
+            result = self.market_read.get_minute_data(symbol, self.today, start_datetime, end_datetime)
             if result.empty:
                 return pd.DataFrame()
 
@@ -473,9 +458,6 @@ class TwoPhaseIntradayRunner:
         print("="*80)
 
         try:
-            # Initialize
-            self.initialize_database()
-
             # Phase 1: Scan at 09:50
             shortlist = self.phase1_scan_at_0950()
 
@@ -512,10 +494,15 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize and run
+    # Initialize and run with port injection
     runner = TwoPhaseIntradayRunner(db_path=args.db_path)
     runner.capital = args.capital
     runner.max_positions = args.max_positions
+
+    # Inject MarketReadPort at the edge (CLI entry point)
+    from src.infrastructure.adapters.market_read_adapter import DuckDBMarketReadAdapter
+    market_read_port = DuckDBMarketReadAdapter(database_path=args.db_path)
+    runner.initialize_database(market_read_port)
 
     runner.run_daily_flow()
 

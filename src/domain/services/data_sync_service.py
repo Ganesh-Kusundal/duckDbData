@@ -10,7 +10,7 @@ import logging
 from ...domain.entities.market_data import MarketData, OHLCV
 from ...domain.entities.symbol import Symbol
 from ...domain.repositories.market_data_repo import MarketDataRepository
-from ...infrastructure.messaging.event_bus import publish_event
+from ...application.ports.event_bus_port import EventBusPort
 from ...domain.events import DataIngestedEvent
 
 
@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 class DataSyncService:
     """Domain service for data synchronization operations."""
 
-    def __init__(self, market_data_repo: MarketDataRepository):
+    def __init__(self, market_data_repo: MarketDataRepository, event_bus: EventBusPort):
         """Initialize data sync service."""
         self.market_data_repo = market_data_repo
+        self.event_bus = event_bus
         self._sync_callbacks: List[Callable] = []
         self._is_running = False
 
@@ -354,7 +355,8 @@ class DataSyncService:
                 metadata=stats
             )
 
-            await publish_event(event)
+            # Use injected event bus port (sync publish acceptable in async context)
+            self.event_bus.publish(event)
 
         except Exception as e:
             logger.error(f"Error publishing sync event: {e}")

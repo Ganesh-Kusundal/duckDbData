@@ -27,7 +27,7 @@ class DuckDBManager:
     - Query execution with optimized performance
     """
     
-    def __init__(self, db_path: str = "data/financial_data.duckdb", data_root: str = "/Users/apple/Downloads/duckDbData/data"):
+    def __init__(self, db_path: str = None, data_root: str = None):
         """
         Initialize DuckDB manager.
         
@@ -35,8 +35,12 @@ class DuckDBManager:
             db_path: Path to DuckDB database file
             data_root: Root directory containing parquet files
         """
-        self.db_path = db_path
-        self.data_root = Path(data_root)
+        from src.infrastructure.config.settings import get_settings
+        settings = get_settings()
+        self.db_path = db_path or settings.database.path
+        # Prefer configured data_root if provided; otherwise default to project data dir
+        default_data_root = Path("data")
+        self.data_root = Path(data_root) if data_root else default_data_root
         self.connection: Optional[duckdb.DuckDBPyConnection] = None
         
         # Validate data root exists
