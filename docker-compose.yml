@@ -1,0 +1,196 @@
+# Enhanced Data Synchronization System - Docker Compose
+
+version: '3.8'
+
+services:
+  # Redis for message queues and caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Historical Sync Service
+  historical-sync:
+    build:
+      context: .
+      dockerfile: services/historical-sync/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=historical-sync
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8000
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - DATABASE_PATH=data/financial_data.duckdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Add your broker credentials here
+      - BROKER_CLIENT_ID=${BROKER_CLIENT_ID}
+      - BROKER_ACCESS_TOKEN=${BROKER_ACCESS_TOKEN}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Real-time Sync Service
+  realtime-sync:
+    build:
+      context: .
+      dockerfile: services/realtime-sync/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - SERVICE_NAME=realtime-sync
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8000
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - DATABASE_PATH=data/financial_data.duckdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BROKER_CLIENT_ID=${BROKER_CLIENT_ID}
+      - BROKER_ACCESS_TOKEN=${BROKER_ACCESS_TOKEN}
+      - WEBSOCKET_URL=wss://websocket.dhan.co
+      - REALTIME_BUFFER_SIZE=1000
+      - BUFFER_FLUSH_INTERVAL=5
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Symbol Management Service
+  symbol-mgmt:
+    build:
+      context: .
+      dockerfile: services/symbol-mgmt/Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - SERVICE_NAME=symbol-mgmt
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8000
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - DATABASE_PATH=data/financial_data.duckdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BROKER_CLIENT_ID=${BROKER_CLIENT_ID}
+      - BROKER_ACCESS_TOKEN=${BROKER_ACCESS_TOKEN}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Monitoring Service
+  monitoring:
+    build:
+      context: .
+      dockerfile: services/monitoring/Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      - SERVICE_NAME=monitoring
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8000
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - DATABASE_PATH=data/financial_data.duckdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PROMETHEUS_PORT=8001
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVICE_NAME=api-gateway
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8080
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Service endpoints
+      - HISTORICAL_SYNC_URL=http://historical-sync:8000
+      - REALTIME_SYNC_URL=http://realtime-sync:8000
+      - SYMBOL_MGMT_URL=http://symbol-mgmt:8000
+      - MONITORING_URL=http://monitoring:8000
+    depends_on:
+      historical-sync:
+        condition: service_healthy
+      realtime-sync:
+        condition: service_healthy
+      symbol-mgmt:
+        condition: service_healthy
+      monitoring:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: enhanced-data-sync-network

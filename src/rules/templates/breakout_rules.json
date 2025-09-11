@@ -1,0 +1,108 @@
+[
+  {
+    "rule_id": "breakout-volume-1.5x",
+    "name": "Volume Breakout Scanner (1.5x)",
+    "description": "Identifies breakouts with 1.5x volume multiplier and 2% price move",
+    "rule_type": "breakout",
+    "enabled": true,
+    "priority": 50,
+    "conditions": {
+      "time_window": {
+        "start": "09:35",
+        "end": "10:30"
+      },
+      "breakout_conditions": {
+        "min_price_move_pct": 0.02,
+        "max_price_move_pct": 0.10,
+        "min_volume_multiplier": 1.5,
+        "volume_comparison_period": 10,
+        "breakout_direction": "up"
+      },
+      "market_conditions": {
+        "min_price": 50,
+        "max_price": 2000,
+        "min_volume": 50000
+      }
+    },
+    "actions": {
+      "signal_type": "BUY",
+      "confidence_calculation": "weighted_average",
+      "risk_management": {
+        "stop_loss_pct": 0.015,
+        "take_profit_pct": 0.045,
+        "max_position_size_pct": 10
+      }
+    },
+    "metadata": {
+      "author": "rule_generator",
+      "created_at": "2025-09-08T22:00:00Z",
+      "version": "1.0.0",
+      "tags": ["breakout", "volume", "momentum"],
+      "performance_expectations": {
+        "expected_win_rate": 0.65,
+        "expected_profit_factor": 1.8
+      },
+      "risk_assessment": {
+        "risk_level": "medium",
+        "market_conditions": "bull",
+        "liquidity_requirements": "medium",
+        "holding_period": "intraday"
+      }
+    }
+  },
+  {
+    "rule_id": "breakout-high-volume-2x",
+    "name": "High Volume Breakout Scanner (2x)",
+    "description": "Identifies breakouts with 2x volume multiplier and 3% price move",
+    "rule_type": "breakout",
+    "enabled": true,
+    "priority": 60,
+    "conditions": {
+      "time_window": {
+        "start": "09:30",
+        "end": "11:00"
+      },
+      "breakout_conditions": {
+        "min_price_move_pct": 0.03,
+        "max_price_move_pct": 0.08,
+        "min_volume_multiplier": 2.0,
+        "volume_comparison_period": 15,
+        "breakout_direction": "up"
+      },
+      "market_conditions": {
+        "min_price": 100,
+        "max_price": 5000,
+        "min_volume": 100000
+      }
+    },
+    "actions": {
+      "signal_type": "BUY",
+      "confidence_calculation": "weighted_average",
+      "risk_management": {
+        "stop_loss_pct": 0.02,
+        "take_profit_pct": 0.06,
+        "max_position_size_pct": 8
+      },
+      "alert_settings": {
+        "email_notification": true,
+        "alert_threshold": 0.8
+      }
+    },
+    "metadata": {
+      "author": "rule_generator",
+      "created_at": "2025-09-08T22:00:00Z",
+      "version": "1.0.0",
+      "tags": ["breakout", "high-volume", "momentum"],
+      "performance_expectations": {
+        "expected_win_rate": 0.70,
+        "expected_profit_factor": 2.1
+      },
+      "risk_assessment": {
+        "risk_level": "medium",
+        "market_conditions": "bull",
+        "liquidity_requirements": "high",
+        "holding_period": "intraday"
+      }
+    }
+  }
+]

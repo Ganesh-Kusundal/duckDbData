@@ -1,0 +1,105 @@
+# DuckDB Data Files
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# Parquet Files
+*.parquet
+data/**/*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Data directories (uncomment if you want to ignore all data)
+# data/
+# models/
+# checkpoints/
+
+# ML models and checkpoints
+*.pkl
+*.pickle
+*.h5
+*.pb
+*.onnx
+*.joblib
+
+# Streamlit
+.streamlit/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# conda
+conda-envs/
+.conda/
+*.parquet
+
+# Meta directories
+.meta/
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Demo and test files
+demo_*.py
+demo_*.html
+demo_*.json
+demo_*.csv
+demo_*.db
+test_*.py
+test_*.html
+*.db

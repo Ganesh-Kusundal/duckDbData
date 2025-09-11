@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Create Rule{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2><i class="fas fa-plus"></i> Create New Rule</h2>
+        <p class="text-muted">Create a new trading rule with guided configuration</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-wizard-magic"></i> Rule Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="ruleForm">
+                    <!-- Basic Information -->
+                    <div class="mb-4">
+                        <h6 class="text-primary mb-3"><i class="fas fa-info-circle"></i> Basic Information</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="rule_id" class="form-label">Rule ID *</label>
+                                <input type="text" class="form-control" id="rule_id" name="rule_id"
+                                       placeholder="e.g., breakout-volume-1.5x" required
+                                       value="{{ rule.rule_id if rule else '' }}">
+                                <div class="form-text">Unique identifier (kebab-case recommended)</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="name" class="form-label">Rule Name *</label>
+                                <input type="text" class="form-control" id="name" name="name"
+                                       placeholder="e.g., Volume Breakout Scanner" required
+                                       value="{{ rule.name if rule else '' }}">
+                                <div class="form-text">Human-readable name</div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <label for="rule_type" class="form-label">Rule Type *</label>
+                                <select class="form-select" id="rule_type" name="rule_type" required onchange="updateRuleTypeFields()">
+                                    <option value="">Select Rule Type</option>
+                                    <option value="breakout" {{ 'selected' if rule and rule.rule_type == 'breakout' else '' }}>Breakout Scanner</option>
+                                    <option value="crp" {{ 'selected' if rule and rule.rule_type == 'crp' else '' }}>CRP Scanner</option>
+                                    <option value="technical" {{ 'selected' if rule and rule.rule_type == 'technical' else '' }}>Technical Analysis</option>
+                                    <option value="volume" {{ 'selected' if rule and rule.rule_type == 'volume' else '' }}>Volume Analysis</option>
+                                    <option value="momentum" {{ 'selected' if rule and rule.rule_type == 'momentum' else '' }}>Momentum Scanner</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="priority" class="form-label">Priority</label>
+                                <input type="number" class="form-control" id="priority" name="priority"
+                                       min="1" max="100" value="{{ rule.priority if rule else 50 }}">
+                                <div class="form-text">Execution priority (higher = executes first)</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                                       {{ 'checked' if not rule or rule.enabled else '' }}>
+                                <label class="form-check-label" for="enabled">
+                                    Enable rule (active and will be executed)
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"
+                                      placeholder="Describe what this rule does and when it should trigger">{{ rule.description if rule else '' }}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- Time Window -->
+                    <div class="mb-4">
+                        <h6 class="text-primary mb-3"><i class="fas fa-clock"></i> Time Window</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="time_start" class="form-label">Start Time *</label>
+                                <input type="time" class="form-control" id="time_start" name="time_start"
+                                       value="{{ rule.conditions.time_window.start if rule else '09:15' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="time_end" class="form-label">End Time *</label>
+                                <input type="time" class="form-control" id="time_end" name="time_end"
+                                       value="{{ rule.conditions.time_window.end if rule else '15:15' }}" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Market Conditions -->
+                    <div class="mb-4">
+                        <h6 class="text-primary mb-3"><i class="fas fa-chart-line"></i> Market Conditions</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="min_price" class="form-label">Minimum Price (₹)</label>
+                                <input type="number" class="form-control" id="min_price" name="min_price"
+                                       min="0" step="0.01" value="{{ rule.conditions.market_conditions.min_price if rule else 50 }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="max_price" class="form-label">Maximum Price (₹)</label>
+                                <input type="number" class="form-control" id="max_price" name="max_price"
+                                       min="0" step="0.01" value="{{ rule.conditions.market_conditions.max_price if rule else 2000 }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rule-Type Specific Fields -->
+                    <div id="ruleTypeFields">
+                        <!-- These will be populated by JavaScript based on rule type -->
+                    </div>
+
+                    <!-- Risk Management -->
+                    <div class="mb-4">
+                        <h6 class="text-primary mb-3"><i class="fas fa-shield-alt"></i> Risk Management</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="signal_type" class="form-label">Signal Type *</label>
+                                <select class="form-select" id="signal_type" name="signal_type" required>
+                                    <option value="BUY" {{ 'selected' if rule and rule.actions.signal_type == 'BUY' else '' }}>BUY</option>
+                                    <option value="SELL" {{ 'selected' if rule and rule.actions.signal_type == 'SELL' else '' }}>SELL</option>
+                                    <option value="HOLD" {{ 'selected' if rule and rule.actions.signal_type == 'HOLD' else '' }}>HOLD</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="author" class="form-label">Author</label>
+                                <input type="text" class="form-control" id="author" name="author"
+                                       placeholder="Your name or team" value="{{ rule.metadata.author if rule else 'Web Interface' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Create Rule
+                        </button>
+                        <a href="{{ url_for('list_rules') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Help Panel -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-question-circle"></i> Help & Tips</h5>
+            </div>
+            <div class="card-body">
+                <h6>Rule ID Guidelines:</h6>
+                <ul class="small">
+                    <li>Use kebab-case (lowercase with hyphens)</li>
+                    <li>Include rule type and key parameters</li>
+                    <li>Example: <code>breakout-volume-1.5x</code></li>
+                </ul>
+
+                <h6 class="mt-3">Priority Levels:</h6>
+                <ul class="small">
+                    <li>1-20: Low priority rules</li>
+                    <li>21-50: Normal priority rules</li>
+                    <li>51-100: High priority rules</li>
+                </ul>
+
+                <h6 class="mt-3">Best Practices:</h6>
+                <ul class="small">
+                    <li>Always validate rules before deployment</li>
+                    <li>Use descriptive names and descriptions</li>
+                    <li>Test rules in development environment first</li>
+                    <li>Monitor rule performance after deployment</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Preview Panel -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-eye"></i> Rule Preview</h5>
+            </div>
+            <div class="card-body">
+                <div id="rulePreview">
+                    <p class="text-muted">Complete the form to see a preview of your rule</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateRuleTypeFields() {
+    const ruleType = document.getElementById('rule_type').value;
+    const fieldsContainer = document.getElementById('ruleTypeFields');
+
+    let fieldsHTML = '';
+
+    if (ruleType === 'breakout') {
+        fieldsHTML = `
+        <div class="mb-4">
+            <h6 class="text-primary mb-3"><i class="fas fa-chart-bar"></i> Breakout Conditions</h6>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="volume_multiplier" class="form-label">Volume Multiplier *</label>
+                    <input type="number" class="form-control" id="volume_multiplier" name="volume_multiplier"
+                           min="1.0" step="0.1" value="1.5" required>
+                    <div class="form-text">Volume must be X times above average</div>
+                </div>
+                <div class="col-md-6">
+                    <label for="price_move_pct" class="form-label">Price Move % *</label>
+                    <input type="number" class="form-control" id="price_move_pct" name="price_move_pct"
+                           min="0.1" max="10.0" step="0.1" value="0.5" required>
+                    <div class="form-text">Minimum price movement to trigger</div>
+                </div>
+            </div>
+        </div>
+        `;
+    } else if (ruleType === 'crp') {
+        fieldsHTML = `
+        <div class="mb-4">
+            <h6 class="text-primary mb-3"><i class="fas fa-bullseye"></i> CRP Conditions</h6>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="close_threshold" class="form-label">Close Threshold % *</label>
+                    <input type="number" class="form-control" id="close_threshold" name="close_threshold"
+                           min="0.1" max="10.0" step="0.1" value="2.0" required>
+                    <div class="form-text">Max % difference for close near high/low</div>
+                </div>
+                <div class="col-md-6">
+                    <label for="range_threshold" class="form-label">Range Threshold % *</label>
+                    <input type="number" class="form-control" id="range_threshold" name="range_threshold"
+                           min="0.1" max="20.0" step="0.1" value="3.0" required>
+                    <div class="form-text">Maximum trading range percentage</div>
+                </div>
+            </div>
+        </div>
+        `;
+    }
+
+    fieldsContainer.innerHTML = fieldsHTML;
+}
+
+// Update rule type fields on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateRuleTypeFields();
+
+    // Update preview when form changes
+    const form = document.getElementById('ruleForm');
+    const preview = document.getElementById('rulePreview');
+
+    form.addEventListener('input', function() {
+        const ruleId = document.getElementById('rule_id').value;
+        const name = document.getElementById('name').value;
+        const ruleType = document.getElementById('rule_type').value;
+        const enabled = document.getElementById('enabled').checked;
+
+        if (ruleId && name && ruleType) {
+            preview.innerHTML = `
+                <strong>${name}</strong><br>
+                <code>${ruleId}</code><br>
+                <span class="badge bg-${ruleType === 'breakout' ? 'primary' : ruleType === 'crp' ? 'secondary' : 'info'}">${ruleType}</span>
+                <span class="badge bg-${enabled ? 'success' : 'secondary'}">${enabled ? 'Active' : 'Disabled'}</span>
+            `;
+        }
+    });
+});
+</script>
+{% endblock %}

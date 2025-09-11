@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@codebuff/sdk": "^0.1.29"
+  }
+}

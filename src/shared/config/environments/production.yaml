@@ -1,0 +1,143 @@
+# Production Environment Configuration
+# ===================================
+# This file contains production-specific overrides
+# SECURITY NOTE: Never commit actual secrets to version control
+
+environment: production
+
+# Production-specific settings
+production:
+  debug_mode: false
+  hot_reload: false
+  mock_external_services: false
+  verbose_logging: false
+  enable_profiler: false
+  backup_enabled: true
+  backup_interval_hours: 24
+  monitoring_enabled: true
+
+# Production API settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "${ALLOWED_ORIGINS}"  # Environment variable
+  rate_limit: "1000/minute"  # Higher limit for production
+  secret_key: "${API_SECRET_KEY}"  # Environment variable
+  access_token_expire_minutes: 15  # Shorter for security
+
+# Production dashboard settings
+dashboard:
+  host: "0.0.0.0"
+  port: 8080
+  reload: false
+  cors_origins:
+    - "${ALLOWED_ORIGINS}"  # Environment variable
+  session_timeout: 1800  # 30 minutes
+
+# Production WebSocket settings
+websocket:
+  host: "0.0.0.0"
+  port: 8081
+  max_connections: 5000  # Higher limit for production
+  connection_timeout: 60
+  heartbeat_interval: 60
+  message_size_limit: 2097152  # 2MB limit
+
+# Production database settings
+database:
+  path: "${DATABASE_PATH}"  # Environment variable
+  max_connections: 20
+  connection_pool_size: 50
+  connection_pool_timeout: 60
+  query_cache_enabled: true
+  query_cache_ttl: 600  # Longer cache in production
+
+# Production broker settings (use actual credentials from environment)
+brokers:
+  default: "${DEFAULT_BROKER}"  # Environment variable
+  rate_limit: 500  # Higher rate limit
+
+  brokers:
+    dhan:
+      api_key: "${DHAN_API_KEY}"
+      api_secret: "${DHAN_API_SECRET}"
+      access_token: "${DHAN_ACCESS_TOKEN}"
+    tradehull:
+      api_key: "${TRADEHULL_API_KEY}"
+      api_secret: "${TRADEHULL_API_SECRET}"
+      access_token: "${TRADEHULL_ACCESS_TOKEN}"
+
+  endpoints:
+    dhan: "https://api.dhan.co"
+    tradehull: "https://api.tradehull.com"
+
+# Production logging
+logging:
+  level: "WARNING"  # Less verbose in production
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/var/log/trading-system/app.log"
+  max_file_size: "100MB"
+  backup_count: 10
+
+# Production external services
+services:
+  redis_url: "${REDIS_URL}"
+  postgres_url: "${POSTGRES_URL}"
+  elasticsearch_url: "${ELASTICSEARCH_URL}"
+  prometheus_url: "${PROMETHEUS_URL}"
+
+# Production features (all enabled)
+features:
+  advanced_analytics: true
+  real_time_scanning: true
+  websocket_streams: true
+  export_functionality: true
+  backtesting_engine: true
+  multi_broker_support: true
+  paper_trading: false  # Disable paper trading in production
+
+# Production security
+security:
+  enable_ssl: true
+  ssl_cert_path: "/etc/ssl/certs/trading-system.crt"
+  ssl_key_path: "/etc/ssl/private/trading-system.key"
+  jwt_secret: "${JWT_SECRET}"
+  password_min_length: 12
+  session_timeout: 1800  # 30 minutes
+  max_login_attempts: 3
+  lockout_duration_minutes: 60
+
+# Production monitoring
+monitoring:
+  enable_prometheus: true
+  prometheus_port: 9090
+  enable_health_checks: true
+  health_check_interval: 15  # More frequent in production
+  log_requests: false  # Don't log requests in production
+  log_errors: true
+  metrics_retention_days: 90  # Longer retention
+
+# Production trade engine settings
+trade_engine:
+  mode: "live"  # Production uses live trading
+  telemetry:
+    log_level: "WARNING"
+    write_to_duckdb: true
+    metrics:
+      enable_pnl_tracking: true
+      enable_order_tracking: true
+      enable_signal_tracking: true
+
+# Performance optimizations for production
+performance:
+  fast_mode: true
+  connection_pool_enabled: true
+  connection_pool_size: 50
+  skip_complex_verification: true
+  essential_checks_only: true
+  query_cache_enabled: true
+  query_cache_ttl: 600
+  prepared_statements_enabled: true
+  performance_monitoring: true
+  metrics_collection: true

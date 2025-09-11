@@ -1,0 +1,78 @@
+# Development Environment Configuration
+# ===================================
+# This file contains development-specific overrides
+
+environment: development
+
+# Development-specific settings
+development:
+  debug_mode: true
+  hot_reload: true
+  mock_external_services: true
+  verbose_logging: true
+  enable_profiler: false
+
+# Override main config for development
+api:
+  host: "127.0.0.1"  # Localhost only for development
+  port: 8000
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+    - "http://127.0.0.1:3000"
+    - "http://127.0.0.1:8080"
+
+dashboard:
+  host: "127.0.0.1"
+  port: 8080
+  reload: true  # Enable auto-reload in development
+
+websocket:
+  host: "127.0.0.1"
+  port: 8081
+  max_connections: 100  # Lower limit for development
+
+# Development database settings
+database:
+  path: "data/financial_data_dev.duckdb"  # Separate DB for development
+  max_connections: 3
+  connection_pool_size: 5
+
+# Development logging
+logging:
+  level: "DEBUG"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+
+# Development broker settings (use test credentials)
+brokers:
+  brokers:
+    dhan:
+      api_key: "dev_api_key"
+      api_secret: "dev_api_secret"
+      access_token: "dev_access_token"
+    tradehull:
+      api_key: "dev_api_key_th"
+      api_secret: "dev_api_secret_th"
+      access_token: "dev_access_token_th"
+
+# Development features
+features:
+  advanced_analytics: true
+  real_time_scanning: true
+  websocket_streams: true
+  export_functionality: true
+  backtesting_engine: true
+  multi_broker_support: false
+  paper_trading: true
+
+# Development monitoring (less aggressive)
+monitoring:
+  enable_prometheus: false
+  log_requests: true
+  log_errors: true
+
+# Development security (relaxed)
+security:
+  enable_ssl: false
+  password_min_length: 4  # Shorter for development
+  max_login_attempts: 10  # More attempts for development

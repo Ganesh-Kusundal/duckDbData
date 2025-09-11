@@ -1,0 +1,459 @@
+# Consolidated Configuration - Single Source of Truth
+# ====================================================
+# This file consolidates all configuration from:
+# - configs/config.yaml
+# - configs/database.yaml
+# - configs/scanners.yaml
+# - configs/analytics.yaml
+# - configs/brokers.yaml
+# - trade_engine/config/trade_engine.yaml
+# ====================================================
+
+# Application Metadata
+name: "Trading System"
+version: "2.0.0"
+description: "Unified Trading System with CQRS Architecture"
+environment: development  # development | staging | production | testing
+
+# Performance Settings
+performance:
+  fast_mode: false
+  connection_pool_enabled: true
+  connection_pool_size: 10
+  connection_pool_timeout: 30.0
+  skip_complex_verification: false
+  verification_timeout: 5.0
+  essential_checks_only: false
+  query_cache_enabled: true
+  query_cache_ttl: 300
+  prepared_statements_enabled: true
+  performance_monitoring: false
+  metrics_collection: false
+
+# Database Configuration
+database:
+  path: "data/financial_data.duckdb"
+  memory: false
+  extension_dir: "./extensions"
+  max_connections: 5
+  connection_pool_size: 10
+  connection_pool_timeout: 30.0
+  query_cache_enabled: true
+  query_cache_ttl: 300
+  prepared_statements_enabled: true
+
+  # Database Schema
+  schema:
+    market_data:
+      create_sql: |
+        CREATE TABLE IF NOT EXISTS market_data (
+            symbol VARCHAR NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            open DECIMAL(10,2) NOT NULL,
+            high DECIMAL(10,2) NOT NULL,
+            low DECIMAL(10,2) NOT NULL,
+            close DECIMAL(10,2) NOT NULL,
+            volume BIGINT NOT NULL,
+            timeframe VARCHAR NOT NULL,
+            date_partition DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, timestamp, timeframe)
+        )
+
+    symbols:
+      create_sql: |
+        CREATE TABLE IF NOT EXISTS symbols (
+            symbol VARCHAR PRIMARY KEY,
+            name VARCHAR,
+            sector VARCHAR,
+            industry VARCHAR,
+            exchange VARCHAR DEFAULT 'NSE',
+            first_date DATE,
+            last_date DATE,
+            total_records BIGINT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+
+    scanner_results:
+      create_sql: |
+        CREATE TABLE IF NOT EXISTS scanner_results (
+            id VARCHAR PRIMARY KEY,
+            scanner_name VARCHAR NOT NULL,
+            symbol VARCHAR NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            signals JSON,
+            execution_time_ms FLOAT,
+            success BOOLEAN DEFAULT TRUE,
+            error_message VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+
+    # Database Indexes
+    indexes:
+      market_data_symbol_date: "CREATE INDEX IF NOT EXISTS idx_market_data_symbol_date ON market_data(symbol, date_partition)"
+      market_data_timestamp: "CREATE INDEX IF NOT EXISTS idx_market_data_timestamp ON market_data(timestamp)"
+      scanner_results_symbol: "CREATE INDEX IF NOT EXISTS idx_scanner_results_symbol ON scanner_results(symbol)"
+      scanner_results_timestamp: "CREATE INDEX IF NOT EXISTS idx_scanner_results_timestamp ON scanner_results(timestamp)"
+
+# Broker Configuration
+brokers:
+  default: "dhan"
+  rate_limit: 100
+
+  brokers:
+    dhan:
+      api_key: "dummy_key"
+      api_secret: "dummy_secret"
+      access_token: "dummy_token"
+    tradehull:
+      api_key: "dummy_key_th"
+      api_secret: "dummy_secret_th"
+      access_token: "dummy_token_th"
+
+  endpoints:
+    dhan: "https://api.dhan.co"
+    tradehull: "https://api.tradehull.com"
+
+# Scanner Configuration
+scanners:
+  # Default scanner settings
+  default:
+    breakout_period: 20
+    obv_threshold: 100.0
+    volume_multiplier: 1.5
+
+  # Time-based settings
+  cutoff_time: "09:30"
+  performance_start_time: "09:45"
+  performance_end_time: "15:15"
+  signal_time_window_start: "09:15"
+  signal_time_window_end: "09:45"
+
+  # Backtest configuration
+  backtest:
+    max_iterations: 1000
+    timeframe: "1d"
+
+  # Optimization settings
+  optimization:
+    default_algorithm: "grid_search"
+    early_stopping_threshold: 0.001
+    fitness_metric: "intraday_win_rate"
+    max_evaluations: 50
+    parallel_workers: 2
+    train_validation_split: 0.7
+
+  # Technical indicator settings
+  technical:
+    bb_deviation: 1.5
+    macd_threshold: 0.1
+    max_price: 10000
+    min_price: 50
+    min_volume: 1000
+    rsi_overbought: 70
+    rsi_oversold: 30
+
+  # Volume settings
+  volume:
+    max_price: 10000
+    min_price: 50
+    min_volume: 1000
+    volume_multiplier_max: 5.0
+    volume_multiplier_min: 1.5
+
+  # Scanner rules
+  rules:
+    backtesting:
+      database_connection_pool: true
+      max_parallel_rules: 4
+      metrics_collection: true
+      performance_monitoring: true
+      query_cache_enabled: true
+      query_cache_ttl: 300
+
+    breakout:
+      breakout_strength_threshold: 2.0
+      max_price: 10000
+      min_price: 50
+      min_volume: 1000
+      price_move_pct_max: 5.0
+      price_move_pct_min: 0.5
+      time_window_minutes: 30
+      volume_comparison_period: 10
+      volume_multiplier_max: 3.0
+      volume_multiplier_min: 1.5
+
+    crp:
+      close_threshold_pct: 2.0
+      consolidation_period: 5
+      max_price: 10000
+      min_price: 50
+      min_volume: 1000
+      range_threshold_pct: 3.0
+
+  # Scanner strategies
+  strategies:
+    breakout:
+      breakout_volume_ratio: 2.0
+      consolidation_period: 5
+      consolidation_range_pct: 3.0
+      max_price: 2000
+      max_results: 20
+      min_price: 50
+      momentum_period: 3
+      obv_lookback_period: 10
+      obv_threshold: 1.5
+      resistance_break_pct: 1.0
+
+    technical:
+      bb_deviation: 1.5
+      consolidation_period: 5
+      macd_threshold: 0.1
+      max_price: 2000
+      max_results: 50
+      min_price: 50
+      obv_threshold: 1.0
+      required_indicators:
+        - rsi
+        - macd
+        - bollinger_bands
+      rsi_overbought: 70
+      rsi_oversold: 30
+
+# Analytics Configuration
+analytics:
+  # Query configurations
+  queries:
+    breakout_patterns:
+      timeout: 30
+      max_results: 1000
+
+  # Analytics rules
+  rules:
+    - name: "high_volume"
+      pattern: "volume > avg_volume * 2"
+      params:
+        threshold: 2.0
+    - name: "price_breakout"
+      pattern: "close > highest_high_20"
+      params:
+        period: 20
+
+  # Dashboard settings
+  dashboard:
+    port: 8080
+    host: "localhost"
+
+  # Available indicators
+  indicators:
+    - rsi
+    - macd
+    - obv
+
+# Trade Engine Configuration (Consolidated from trade_engine/config/trade_engine.yaml)
+trade_engine:
+  mode: "backtest"  # backtest | live
+  trading_day: "2025-08-20"
+  universe: "NIFTY500"
+
+  # Trading Hours
+  time:
+    warmup_start: "09:15"
+    shortlist_cutoff: "09:50"
+    eod_flat: "15:15"
+
+  # Data Configuration
+  data:
+    duckdb_path: "data/financial_data.duckdb"
+    bars:
+      trigger_timeframe: "1m"
+      risk_timeframe: "5m"
+    live_ws: "wss://api.dhan.co/marketfeed"
+
+  # Symbol Selection Criteria
+  selection:
+    turnover_min_crore: 5.0
+    spread_bps_max: 15
+    blacklist: []
+    score_weights:
+      ret_0915_0950: 0.35
+      vspike_10m: 0.25
+      obv_delta_35m: 0.20
+      sector_strength: 0.10
+      range_compression: 0.10
+      spread_penalty: -0.20
+      illiq_penalty: -0.20
+
+  # Entry Configuration
+  entry:
+    triggers: ["ema_9_30", "range_break", "tape_confirm"]
+    range_break:
+      lookback_min: 15
+      vol_mult: 1.3
+    ema_9_30:
+      body_top_pct: 40
+
+  # Risk Management
+  risk:
+    per_trade_r_pct: 0.75
+    k_atr_initial: 1.6
+    dd_daily_stop_pct: 2.5
+    sector_cap_pct: 60
+
+  # Position Sizing
+  sizing:
+    capital_split: [0.6, 0.2, 0.2]
+    slippage_bps: 5
+    fee_bps: 2
+
+  # Pyramiding Rules
+  pyramiding:
+    add_levels_r: [0.75, 1.25, 2.0]
+    add_sizes_frac: [0.5, 0.33, 0.25]
+    tsl:
+      mode: "chandelier_atr"
+      k_steps: [2.0, 1.7, 1.5]
+
+  # Rotation Logic
+  rotation:
+    check_after_minutes: 20
+    min_leader_r: 0.5
+
+  # Guardrails
+  limits:
+    max_reentries_15m: 3
+    max_adds: 3
+    eod_flat_time: "15:15"
+
+  # Broker Configuration
+  broker:
+    name: "dhan"
+    tick_size_map: "trade_engine/config/nse_ticks.yaml"
+    rounding: "nearest_tick"
+
+  # Telemetry
+  telemetry:
+    log_level: "INFO"
+    write_to_duckdb: true
+    metrics:
+      enable_pnl_tracking: true
+      enable_order_tracking: true
+      enable_signal_tracking: true
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+  rate_limit: "100/minute"
+  docs_url: "/docs"
+  redoc_url: "/redoc"
+  openapi_url: "/openapi.json"
+  secret_key: "your-secret-key-here"
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+
+# CLI Configuration
+cli:
+  rich_enabled: true
+  log_level: "INFO"
+  progress_bar: true
+  auto_completion: true
+  max_table_rows: 100
+  output_format: "table"
+
+# Dashboard Configuration
+dashboard:
+  host: "0.0.0.0"
+  port: 8080
+  reload: false
+  static_dir: "static"
+  template_dir: "templates"
+  real_time_updates: true
+  websocket_enabled: true
+  charts_enabled: true
+  export_enabled: true
+  cors_origins:
+    - "http://localhost:3000"
+  session_timeout: 3600
+
+# WebSocket Configuration
+websocket:
+  host: "0.0.0.0"
+  port: 8081
+  max_connections: 1000
+  connection_timeout: 30
+  heartbeat_interval: 30
+  message_size_limit: 1048576
+  max_subscriptions_per_client: 100
+  subscription_rate_limit: 10
+  data_stream_interval: 1.0
+  batch_size: 100
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "./logs/app.log"
+  max_file_size: "10MB"
+  backup_count: 5
+
+# External Service URLs (for production deployments)
+services:
+  redis_url: "redis://localhost:6379"
+  postgres_url: "postgresql://user:password@localhost/trading_db"
+  elasticsearch_url: "http://localhost:9200"
+  prometheus_url: "http://localhost:9090"
+
+# Feature Flags (for gradual rollouts)
+features:
+  advanced_analytics: true
+  real_time_scanning: true
+  websocket_streams: true
+  export_functionality: true
+  backtesting_engine: true
+  multi_broker_support: false
+  paper_trading: true
+
+# Security Configuration
+security:
+  enable_ssl: false
+  ssl_cert_path: "./certs/server.crt"
+  ssl_key_path: "./certs/server.key"
+  jwt_secret: "your-jwt-secret-here"
+  password_min_length: 8
+  session_timeout: 3600
+  max_login_attempts: 5
+  lockout_duration_minutes: 30
+
+# Monitoring and Observability
+monitoring:
+  enable_prometheus: false
+  prometheus_port: 9090
+  enable_health_checks: true
+  health_check_interval: 30
+  log_requests: true
+  log_errors: true
+  metrics_retention_days: 30
+
+# Development Settings (only used in development environment)
+development:
+  debug_mode: true
+  hot_reload: true
+  mock_external_services: true
+  verbose_logging: true
+  enable_profiler: false
+
+# Production Settings (only used in production environment)
+production:
+  debug_mode: false
+  hot_reload: false
+  mock_external_services: false
+  verbose_logging: false
+  enable_profiler: false
+  backup_enabled: true
+  backup_interval_hours: 24
+  monitoring_enabled: true

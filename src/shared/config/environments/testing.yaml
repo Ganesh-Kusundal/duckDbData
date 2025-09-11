@@ -1,0 +1,158 @@
+# Testing Environment Configuration
+# ================================
+# This file contains testing-specific overrides
+# Optimized for automated testing and CI/CD
+
+environment: testing
+
+# Testing-specific settings
+development:
+  debug_mode: true
+  hot_reload: false
+  mock_external_services: true  # Always mock external services in testing
+  verbose_logging: true
+  enable_profiler: false
+
+# Test database settings (use in-memory or temporary files)
+database:
+  path: ":memory:"  # In-memory database for testing
+  memory: true
+  max_connections: 1
+  connection_pool_size: 1
+  query_cache_enabled: false  # Disable caching in tests
+  prepared_statements_enabled: false
+
+# Test API settings
+api:
+  host: "127.0.0.1"
+  port: 8888  # Different port to avoid conflicts
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+  rate_limit: "1000/minute"  # High limit for testing
+  secret_key: "test-secret-key-for-testing-only"
+  access_token_expire_minutes: 60  # Longer for test sessions
+
+# Test dashboard settings
+dashboard:
+  host: "127.0.0.1"
+  port: 8889  # Different port
+  reload: false
+  real_time_updates: false  # Disable for testing
+  websocket_enabled: false
+  session_timeout: 7200  # 2 hours for test sessions
+
+# Test WebSocket settings
+websocket:
+  host: "127.0.0.1"
+  port: 8890  # Different port
+  max_connections: 10
+  connection_timeout: 5
+  heartbeat_interval: 5
+  max_subscriptions_per_client: 5
+  data_stream_interval: 0.1  # Faster for testing
+
+# Test broker settings (use test credentials)
+brokers:
+  default: "dhan"
+  rate_limit: 1000  # High limit for testing
+
+  brokers:
+    dhan:
+      api_key: "test_api_key"
+      api_secret: "test_api_secret"
+      access_token: "test_access_token"
+    tradehull:
+      api_key: "test_api_key_th"
+      api_secret: "test_api_secret_th"
+      access_token: "test_access_token_th"
+
+# Test logging (capture all logs for test verification)
+logging:
+  level: "DEBUG"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+  file: "./logs/test/app.log"
+  max_file_size: "10MB"
+  backup_count: 1
+
+# Test external services (use test instances or mocks)
+services:
+  redis_url: "redis://localhost:6379/1"  # Use DB 1 for testing
+  postgres_url: "postgresql://test_user:test_password@localhost/test_trading_db"
+  elasticsearch_url: "http://localhost:9200"
+  prometheus_url: "http://localhost:9090"
+
+# Test features (enable all for comprehensive testing)
+features:
+  advanced_analytics: true
+  real_time_scanning: true
+  websocket_streams: true
+  export_functionality: true
+  backtesting_engine: true
+  multi_broker_support: true
+  paper_trading: true
+
+# Test security (relaxed for testing)
+security:
+  enable_ssl: false
+  jwt_secret: "test-jwt-secret-for-testing-only"
+  password_min_length: 1  # Minimal for testing
+  session_timeout: 7200
+  max_login_attempts: 100  # High limit for testing
+  lockout_duration_minutes: 1
+
+# Test monitoring (minimal for performance)
+monitoring:
+  enable_prometheus: false
+  enable_health_checks: true
+  health_check_interval: 5  # Faster checks for testing
+  log_requests: true
+  log_errors: true
+  metrics_retention_days: 1
+
+# Test trade engine settings
+trade_engine:
+  mode: "backtest"  # Use backtest mode for testing
+  universe: "test_symbols"  # Limited universe for testing
+  telemetry:
+    log_level: "DEBUG"
+    write_to_duckdb: false  # Don't write to DB in tests
+    metrics:
+      enable_pnl_tracking: true
+      enable_order_tracking: true
+      enable_signal_tracking: true
+
+# Test performance settings
+performance:
+  fast_mode: false
+  connection_pool_enabled: false  # Disable pooling in tests
+  skip_complex_verification: true  # Skip for faster tests
+  essential_checks_only: true
+  query_cache_enabled: false
+  prepared_statements_enabled: false
+  performance_monitoring: false
+  metrics_collection: false
+
+# Test-specific settings
+testing:
+  mock_all_external_calls: true
+  disable_email_notifications: true
+  use_test_database: true
+  enable_test_data_generation: true
+  cleanup_after_tests: true
+  parallel_test_execution: false
+  test_data_retention_days: 1
+  enable_coverage_reporting: true
+  screenshot_on_failure: false  # For UI tests
+  record_test_videos: false     # For UI tests
+
+# CI/CD specific settings
+ci:
+  enable_test_reporting: true
+  test_report_format: "junit"
+  coverage_report_format: "xml"
+  enable_performance_baselines: true
+  fail_on_missing_tests: false
+  enable_mutation_testing: false
+  security_scan_enabled: true
+  dependency_scan_enabled: true

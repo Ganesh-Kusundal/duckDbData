@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2><i class="fas fa-tachometer-alt"></i> Rule Management Dashboard</h2>
+        <p class="text-muted">Overview of your trading rules and system status</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-primary">{{ total_rules }}</h5>
+                <p class="card-text">Total Rules</p>
+                <i class="fas fa-file-code fa-2x text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-success">{{ active_rules }}</h5>
+                <p class="card-text">Active Rules</p>
+                <i class="fas fa-play-circle fa-2x text-success"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-info">{{ validated_rules }}</h5>
+                <p class="card-text">Validated Rules</p>
+                <i class="fas fa-check-circle fa-2x text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title text-warning">{{ (total_rules - validated_rules) }}</h5>
+                <p class="card-text">Need Validation</p>
+                <i class="fas fa-exclamation-triangle fa-2x text-warning"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-pie"></i> Rules by Type</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="rulesByTypeChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-clock"></i> System Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <span class="badge bg-success">Database: Connected</span>
+                </div>
+                <div class="mb-3">
+                    <span class="badge bg-success">Validation Engine: Active</span>
+                </div>
+                <div class="mb-3">
+                    <span class="badge bg-success">Rule Engine: Running</span>
+                </div>
+                <div class="mb-3">
+                    <small class="text-muted">Last updated: {{ datetime.now().strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list"></i> Recent Rules</h5>
+                <a href="{{ url_for('list_rules') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Rule ID</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Priority</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rule in rules[:8] %}
+                            <tr>
+                                <td>
+                                    <code>{{ rule.rule_id[:15] }}{% if rule.rule_id|length > 15 %}...{% endif %}</code>
+                                </td>
+                                <td>{{ rule.name[:20] }}{% if rule.name|length > 20 %}...{% endif %}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'primary' if rule.rule_type == 'breakout' else 'secondary' if rule.rule_type == 'crp' else 'info' }}">
+                                        {{ rule.rule_type }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if rule.enabled else 'secondary' }}">
+                                        <i class="fas fa-{{ 'play' if rule.enabled else 'pause' }}"></i>
+                                        {{ 'Active' if rule.enabled else 'Disabled' }}
+                                    </span>
+                                </td>
+                                <td>{{ rule.priority or 50 }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('view_rule', rule_id=rule.rule_id) }}" class="btn btn-outline-primary" title="View">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <a href="{{ url_for('edit_rule', rule_id=rule.rule_id) }}" class="btn btn-outline-warning" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-history"></i> Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_activity %}
+                    {% for activity in recent_activity %}
+                    <div class="mb-3 p-2 border-start border-3 border-{{ 'success' if activity.action == 'created' else 'warning' if activity.action == 'updated' else 'danger' }}">
+                        <small class="text-muted">{{ activity.timestamp[:19] }}</small><br>
+                        <strong>{{ activity.action.title() }}</strong> rule<br>
+                        <code class="small">{{ activity.rule_id }}</code>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-inbox fa-2x mb-2"></i>
+                        <p>No recent activity</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('create_rule') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create New Rule
+                    </a>
+                    <a href="{{ url_for('validate_rules') }}" class="btn btn-info">
+                        <i class="fas fa-check-circle"></i> Validate All Rules
+                    </a>
+                    <a href="{{ url_for('deploy_rules') }}" class="btn btn-success">
+                        <i class="fas fa-rocket"></i> Deploy to Production
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Rules by Type Chart
+    const ctx = document.getElementById('rulesByTypeChart').getContext('2d');
+    const ruleTypes = {};
+
+    // Count rules by type from the table data
+    {% for rule in rules %}
+    ruleTypes['{{ rule.rule_type }}'] = (ruleTypes['{{ rule.rule_type }}'] || 0) + 1;
+    {% endfor %}
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(ruleTypes),
+            datasets: [{
+                data: Object.values(ruleTypes),
+                backgroundColor: [
+                    '#007bff', // breakout - blue
+                    '#6c757d', // crp - gray
+                    '#28a745', // technical - green
+                    '#ffc107', // volume - yellow
+                    '#dc3545'  // momentum - red
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

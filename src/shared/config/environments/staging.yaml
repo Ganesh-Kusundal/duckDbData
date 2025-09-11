@@ -1,0 +1,146 @@
+# Staging Environment Configuration
+# ================================
+# This file contains staging-specific overrides
+# Staging is similar to production but with some debugging enabled
+
+environment: staging
+
+# Staging-specific settings (mix of dev and prod)
+development:
+  debug_mode: false
+  hot_reload: false
+  mock_external_services: false
+  verbose_logging: true  # Keep verbose for debugging
+  enable_profiler: false
+
+production:
+  debug_mode: false
+  hot_reload: false
+  mock_external_services: false
+  verbose_logging: true
+  enable_profiler: false
+  backup_enabled: true
+  backup_interval_hours: 12  # More frequent than production
+  monitoring_enabled: true
+
+# Staging API settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "${ALLOWED_ORIGINS}"
+  rate_limit: "500/minute"  # Medium limit for staging
+  secret_key: "${API_SECRET_KEY}"
+  access_token_expire_minutes: 30  # Longer than production for testing
+
+# Staging dashboard settings
+dashboard:
+  host: "0.0.0.0"
+  port: 8080
+  reload: false
+  cors_origins:
+    - "${ALLOWED_ORIGINS}"
+  session_timeout: 3600
+
+# Staging WebSocket settings
+websocket:
+  host: "0.0.0.0"
+  port: 8081
+  max_connections: 1000
+  connection_timeout: 45
+  heartbeat_interval: 45
+  message_size_limit: 1572864  # 1.5MB limit
+
+# Staging database settings
+database:
+  path: "${DATABASE_PATH}_staging"  # Separate DB for staging
+  max_connections: 10
+  connection_pool_size: 20
+  connection_pool_timeout: 45
+  query_cache_enabled: true
+  query_cache_ttl: 300
+
+# Staging broker settings
+brokers:
+  default: "${DEFAULT_BROKER}"
+  rate_limit: 200
+
+  brokers:
+    dhan:
+      api_key: "${DHAN_API_KEY}"
+      api_secret: "${DHAN_API_SECRET}"
+      access_token: "${DHAN_ACCESS_TOKEN}"
+    tradehull:
+      api_key: "${TRADEHULL_API_KEY}"
+      api_secret: "${TRADEHULL_API_SECRET}"
+      access_token: "${TRADEHULL_ACCESS_TOKEN}"
+
+# Staging logging (more verbose than production)
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+  file: "./logs/staging/app.log"
+  max_file_size: "50MB"
+  backup_count: 7
+
+# Staging external services (may use different instances)
+services:
+  redis_url: "${REDIS_URL}"
+  postgres_url: "${POSTGRES_URL}_staging"
+  elasticsearch_url: "${ELASTICSEARCH_URL}"
+  prometheus_url: "${PROMETHEUS_URL}"
+
+# Staging features (most enabled for testing)
+features:
+  advanced_analytics: true
+  real_time_scanning: true
+  websocket_streams: true
+  export_functionality: true
+  backtesting_engine: true
+  multi_broker_support: true
+  paper_trading: true  # Keep paper trading enabled for testing
+
+# Staging security (production-like but with some flexibility)
+security:
+  enable_ssl: true
+  ssl_cert_path: "/etc/ssl/certs/staging.crt"
+  ssl_key_path: "/etc/ssl/private/staging.key"
+  jwt_secret: "${JWT_SECRET}"
+  password_min_length: 8  # Shorter than production
+  session_timeout: 3600
+  max_login_attempts: 5
+  lockout_duration_minutes: 15
+
+# Staging monitoring
+monitoring:
+  enable_prometheus: true
+  prometheus_port: 9090
+  enable_health_checks: true
+  health_check_interval: 20
+  log_requests: true  # Log requests in staging for debugging
+  log_errors: true
+  metrics_retention_days: 60
+
+# Staging trade engine settings
+trade_engine:
+  mode: "paper"  # Use paper trading in staging
+  telemetry:
+    log_level: "INFO"
+    write_to_duckdb: true
+    metrics:
+      enable_pnl_tracking: true
+      enable_order_tracking: true
+      enable_signal_tracking: true
+
+# Performance settings for staging
+performance:
+  fast_mode: false  # Keep detailed checks in staging
+  connection_pool_enabled: true
+  connection_pool_size: 20
+  skip_complex_verification: false
+  essential_checks_only: false
+  query_cache_enabled: true
+  query_cache_ttl: 300
+  prepared_statements_enabled: true
+  performance_monitoring: true
+  metrics_collection: true
